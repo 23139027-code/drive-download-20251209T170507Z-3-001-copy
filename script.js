@@ -595,8 +595,7 @@ async function renderReportList() {
                 const btnEdit = document.createElement('button');
                 btnEdit.className = 'btn-sm';
                 btnEdit.textContent = 'Sửa';
-                btnEdit.addEventListener('click', (e) => {
-                    e.stopPropagation();
+                btnEdit.addEventListener('click', () => {
                     window.triggerEdit(deviceId, device.name, device.interval || 30);
                 });
 
@@ -604,21 +603,28 @@ async function renderReportList() {
                 const powerClass = isActive ? 'btn-warning' : 'btn-success';
                 btnPower.className = `btn-sm ${powerClass}`;
                 btnPower.innerHTML = isActive ? '<i class="fa-solid fa-power-off"></i> Tắt' : '<i class="fa-solid fa-play"></i> Bật';
-                btnPower.addEventListener('click', (e) => {
-                    e.stopPropagation();
+                btnPower.addEventListener('click', () => {
                     window.toggleDevice(deviceId, isActive);
                 });
 
                 actions.appendChild(btnEdit);
                 actions.appendChild(btnPower);
 
-                // Compose card - click on card to show chart
-                card.addEventListener('click', () => showChart(deviceId, device.name));
-
+                // Compose card
                 card.appendChild(header);
                 card.appendChild(statusRow);
                 card.appendChild(metrics);
                 card.appendChild(actions);
+
+                // Add click listener to card AFTER all elements are appended
+                // Check if click is on button or button child to prevent opening chart
+                card.addEventListener('click', (e) => {
+                    // If clicked element or its parent is a button, don't open chart
+                    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                        return;
+                    }
+                    showChart(deviceId, device.name);
+                });
 
                 grid.appendChild(card);
             });

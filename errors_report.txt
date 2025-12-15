@@ -1,5 +1,6 @@
 Báo cáo lỗi — Kiểm tra tệp nguồn (100% tĩnh)
-Ngày tạo: 2025-12-15 (cập nhật mới nhất: 2025-12-15)
+Ngày tạo: 2025-12-15 (cập nhật mới nhất: 2025-12-15 17:50)
+Nhánh hiện tại: test
 
 Tóm tắt:
 - Tổng số tệp kiểm tra: 7 (tệp chính trong thư mục gốc)
@@ -63,15 +64,13 @@ Chi tiết theo tệp (tiếng Việt):
     + Loại bỏ các style riêng lẻ cho `.report-card h3` và `.report-card p` vì đã dùng chung cấu trúc DOM với `.card`
   - Lợi ích: Card trong Dashboard (Report) giờ có giao diện giống hệt card trong Quản lý, bao gồm: header, device-id, status dot, 3 metrics trong grid, và 2 buttons (Sửa, Tắt/Bật)
 
-7) `script.js` - renderReportList() (ĐÃ SỬA - CẬP NHẬT MỚI NHẤT)
+7) `script.js` - renderReportList() (ĐÃ SỬA - CẬP NHẬT MỚI NHẤT 17:50)
 - CẬP NHẬT 2025-12-15: Refactor hàm renderReportList() để đồng nhất với renderGrid()
   - Mô tả trước đây: Hàm `renderReportList()` tạo card đơn giản bằng `innerHTML` với chỉ có tên, ID và 1 button "Xem Chi Tiết"
   - Thay đổi chi tiết:
     + Thay thế hoàn toàn logic render bằng cách tạo DOM elements giống hệt hàm `renderGrid()`
     + Card giờ có đầy đủ: Header (title + device ID + chip icon), Status row (status dot + text), Metrics grid (3 cột: nhiệt độ, độ ẩm, ánh sáng), Actions (2 buttons: Sửa và Tắt/Bật)
     + Sử dụng `addEventListener` thay vì `onclick` inline cho tất cả sự kiện
-    + Thêm `e.stopPropagation()` cho các button để tránh trigger sự kiện click của card
-    + Click vào card (không phải button) sẽ mở chart chi tiết
     + Thêm xử lý lỗi với thông báo màu đỏ khi có exception
   - Lợi ích: 
     + Giao diện thống nhất giữa phần Quản lý và Dashboard (Report)
@@ -79,12 +78,38 @@ Chi tiết theo tệp (tiếng Việt):
     + UX tốt hơn với các button Sửa và Tắt/Bật ngay trên card
     + Code dễ bảo trì hơn vì sử dụng cùng pattern với renderGrid()
 
+- CẬP NHẬT 2025-12-15 17:50 (NHÁNH TEST): Sửa lỗi event bubbling trong Dashboard (Report)
+  - Vấn đề: Khi nhấn nút "Sửa" trong Dashboard (Report), card vẫn mở chart thay vì mở modal sửa
+  - Nguyên nhân: Event listener của card được gắn trước khi append các phần tử con, và `stopPropagation()` không hoạt động đúng thứ tự
+  - Thay đổi chi tiết:
+    + Di chuyển event listener của card xuống CUỐI, sau khi đã append tất cả các phần tử con
+    + Thay đổi logic xử lý click: Thay vì dùng `stopPropagation()` ở button, giờ kiểm tra target của event ở cấp card
+    + Sử dụng `e.target.tagName === 'BUTTON'` và `e.target.closest('button')` để phát hiện click vào button hoặc phần tử con của button (như icon)
+    + Loại bỏ `e.stopPropagation()` khỏi các button event handler vì không còn cần thiết
+  - Code mới:
+    ```javascript
+    // Add click listener to card AFTER all elements are appended
+    card.addEventListener('click', (e) => {
+        // If clicked element or its parent is a button, don't open chart
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+            return;
+        }
+        showChart(deviceId, device.name);
+    });
+    ```
+  - Lợi ích:
+    + Nút "Sửa" giờ mở modal sửa đúng như mong đợi
+    + Nút "Tắt/Bật" thay đổi trạng thái thiết bị mà không mở chart
+    + Click vào bất kỳ vùng nào khác của card sẽ mở chart
+    + Logic rõ ràng và dễ debug hơn (kiểm tra target thay vì dựa vào event bubbling)
+
 Khuyến nghị bảo mật & tĩnh tổng quát:
 - Không chèn trực tiếp dữ liệu bên ngoài vào `innerHTML`.
 - Dùng `addEventListener` để đăng ký sự kiện global thay vì gán thuộc tính `window.onclick`.
 - Thêm guard khi lấy phần tử DOM: `const el = document.getElementById('x'); if (el) { ... }`.
 - Validate cấu hình Firebase trước khi khởi tạo.
 - Kiểm tra API chính xác của thư viện MQTT (Paho) trước khi gọi các phương thức.
+- Khi xử lý event bubbling, ưu tiên kiểm tra target thay vì dùng stopPropagation() để code dễ hiểu hơn.
 
 Gợi ý hành động tiếp theo (tôi có thể làm giúp):
 1) Xóa thẻ `</form>` thừa trong `login.html` (khuyến nghị: làm ngay).
@@ -92,8 +117,9 @@ Gợi ý hành động tiếp theo (tôi có thể làm giúp):
 3) (Đã xong) Thêm kiểm tra trước khi `initializeApp` trong `firebase-config.js`.
 4) (Đã xong) Sửa `renderReportList` trong `script.js` để đồng nhất giao diện với `renderGrid`.
 5) (Đã xong) Cập nhật CSS cho `.report-card` và `.report-grid` để đồng nhất với card trong Quản lý.
-6) Thay tất cả `window.onclick =` bằng `window.addEventListener('click', ...)` (một số đã sửa trong `script.js`, `login.html` vẫn còn `window.onclick`).
+6) (Đã xong - NHÁNH TEST) Sửa lỗi event bubbling khi click nút "Sửa" trong Dashboard (Report).
+7) Thay tất cả `window.onclick =` bằng `window.addEventListener('click', ...)` (một số đã sửa trong `script.js`, `login.html` vẫn còn `window.onclick`).
 
-Đã áp dụng: sửa `firebase-config.js`, `script.js` (renderGrid, renderReportList), và `style.css` (.report-card, .report-grid) như mô tả ở trên.
+Đã áp dụng (NHÁNH TEST): sửa `firebase-config.js`, `script.js` (renderGrid, renderReportList, event handling), và `style.css` (.report-card, .report-grid) như mô tả ở trên.
 
 --- Kết thúc báo cáo ---
