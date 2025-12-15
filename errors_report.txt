@@ -240,3 +240,6 @@ Gợi ý hành động tiếp theo (tôi có thể làm giúp):
 Đã áp dụng (NHÁNH TEST): sửa `firebase-config.js`, `script.js` (renderGrid, renderReportList, event handling), và `style.css` (.report-card, .report-grid) như mô tả ở trên.
 
 --- Kết thúc báo cáo ---
+
+
+test push
