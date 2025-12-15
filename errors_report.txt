@@ -1,0 +1,70 @@
+Báo cáo lỗi — Kiểm tra tệp nguồn (100% tĩnh)
+Ngày tạo: 2025-12-15
+
+Tóm tắt:
+- Tổng số tệp kiểm tra: 7 (tệp chính trong thư mục gốc)
+- Vấn đề nghiêm trọng (cần sửa ngay): 3
+- Vấn đề trung bình/nhỏ (nên sửa): 8
+- Gợi ý bảo mật & cải thiện: nhiều mục (xem chi tiết từng file)
+
+Tệp đã kiểm tra: `index.html`, `login.html`, `auth.js`, `firebase-config.js`, `login-login.js`, `script.js`, `style.css`.
+
+Chi tiết theo tệp (tiếng Việt):
+
+1) `login.html`
+- Lỗi nghiêm trọng — Thẻ `</form>` thừa
+  - Mô tả: Có một thẻ đóng `</form>` thừa sau `.auth-container` trước `#config-modal`. Thẻ này làm vỡ cấu trúc DOM, khiến một số `getElementById` trả về `null` và gây lỗi khi script sử dụng các phần tử đó.
+  - Hành động sửa: Xóa thẻ `</form>` thừa (chỉ giữ một thẻ đóng `</form>` tương ứng với `<form id="auth-form">`).
+
+- Cải tiến — Dùng `window.addEventListener` thay vì gán `window.onclick`
+  - Mô tả: Gán trực tiếp `window.onclick = ...` sẽ ghi đè handler khác. Nên dùng `window.addEventListener('click', handler)` để tránh xung đột.
+
+2) `login-login.js`
+- Lỗi logic — `switch` có `case` trùng lặp
+  - Mô tả: Trong `showError` có hai `case 'auth/user-not-found'`. Xoá case trùng hoặc sửa case đúng.
+
+- Cải tiến — Kiểm tra tồn tại DOM trước khi đăng ký sự kiện
+  - Mô tả: Dùng `if (form) { ... }` để tránh lỗi khi phần tử không tồn tại do HTML bị sai.
+
+3) `firebase-config.js`
+- Vấn đề vận hành — Khởi tạo Firebase khi config rỗng
+  - Mô tả: `initializeApp(finalConfig)` sẽ chạy ngay cả khi `finalConfig` rỗng. Nếu user chưa cấu hình, có thể gây lỗi runtime.
+  - Hành động sửa: Kiểm tra `finalConfig.apiKey` hoặc `databaseURL` trước khi gọi `initializeApp`. Nếu thiếu, bỏ qua khởi tạo và hiển thị cảnh báo.
+
+4) `auth.js`
+- Thông tin — Import từ local + CDN
+  - Mô tả: Pattern này hợp lệ nhưng phụ thuộc CDN. Không bắt buộc phải thay đổi, nhưng cân nhắc đồng bộ import nếu muốn.
+
+5) `script.js`
+- Lỗi nghiêm trọng — Tạo `innerHTML` chứa `onclick` với dữ liệu không escape
+  - Mô tả: `renderGrid` chèn `device.name`, `deviceId` vào `innerHTML` và vào thuộc tính `onclick`. Nếu các chuỗi chứa dấu nháy hoặc ký tự đặc biệt, HTML/JS bị vỡ hoặc có thể gây XSS.
+  - Hành động sửa: Thay bằng tạo DOM programmatically và dùng `addEventListener`. Ví dụ: tạo `button` bằng `createElement` rồi `btn.addEventListener('click', () => window.triggerEdit(...))`.
+
+- Cải tiến — Kiểm tra tồn tại phương thức trạng thái MQTT
+  - Mô tả: `mqttClient.isConnected()` được gọi mà không kiểm tra xem hàm có tồn tại. Tùy phiên bản Paho, API có thể khác.
+  - Hành động sửa: Kiểm tra tồn tại phương thức trước khi gọi hoặc theo dõi API chính xác của Paho.
+
+- Cải tiến — Tránh gán `window.onclick` nhiều lần
+  - Mô tả: Nhiều vị trí dùng `window.onclick = ...`. Dùng `addEventListener` thay thế.
+
+6) `style.css`
+- Thông tin / gợi ý
+  - Mô tả: Không tìm thấy lỗi cú pháp rõ rệt. Một số khai báo CSS bị lặp (ví dụ `.master-control-area` khai báo 2 lần; `.btn-primary` xuất hiện nhiều nơi). Điều này không gây lỗi nhưng làm khó bảo trì và có thể gây nhầm khi chỉnh style.
+  - Hành động sửa: Dọn dẹp khai báo trùng lặp, gom các biến CSS vào `:root` nếu cần.
+
+Khuyến nghị bảo mật & tĩnh tổng quát:
+- Không chèn trực tiếp dữ liệu bên ngoài vào `innerHTML`.
+- Dùng `addEventListener` để đăng ký sự kiện global thay vì gán thuộc tính `window.onclick`.
+- Thêm guard khi lấy phần tử DOM: `const el = document.getElementById('x'); if (el) { ... }`.
+- Validate cấu hình Firebase trước khi khởi tạo.
+- Kiểm tra API chính xác của thư viện MQTT (Paho) trước khi gọi các phương thức.
+
+Gợi ý hành động tiếp theo (tôi có thể làm giúp):
+1) Xóa thẻ `</form>` thừa trong `login.html` (khuyến nghị: làm ngay).
+2) Sửa `renderGrid` trong `script.js` để tạo DOM an toàn + `addEventListener`.
+3) Thêm kiểm tra trước khi `initializeApp` trong `firebase-config.js`.
+4) Thay tất cả `window.onclick =` bằng `window.addEventListener('click', ...)`.
+
+Nếu bạn đồng ý, tôi sẽ áp dụng các sửa A) và B) (xóa `</form>` và sửa `renderGrid`) rồi chạy một lần rà soát lại và cập nhật báo cáo.
+
+--- Kết thúc báo cáo ---
