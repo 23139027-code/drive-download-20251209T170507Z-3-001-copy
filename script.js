@@ -691,6 +691,8 @@ async function showChart(deviceId, deviceName) {
 
     // 3. LẮNG NGHE REALTIME (Quan trọng nhất)
     // Nghe đúng cái chỗ mà 3 ô số liệu đang nghe
+    let lastSensorData = { temp: null, humid: null, light: null }; // Track previous sensor values
+
     onValue(ref(db, `devices/${deviceId}`), (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
@@ -718,27 +720,38 @@ async function showChart(deviceId, deviceName) {
         if (document.getElementById('toggle-lamp')) document.getElementById('toggle-lamp').checked = (data.lamp_active === true);
 
 
-        // --- B. CẬP NHẬT BIỂU ĐỒ (Phần thêm mới để fix lỗi) ---
-        // Lấy giờ hiện tại
-        const now = new Date();
-        const timeLabel = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+        // --- B. CẬP NHẬT BIỂU ĐỒ - CHỈ KHI DỮ LIỆU SENSOR THAY ĐỔI ---
+        // Check if sensor data actually changed (not just toggle changes)
+        const sensorChanged =
+            lastSensorData.temp !== data.temp ||
+            lastSensorData.humid !== data.humid ||
+            lastSensorData.light !== data.light;
 
-        // Đẩy số liệu mới đang nhảy vào mảng biểu đồ
-        cachedHistoryData.labels.push(timeLabel);
-        cachedHistoryData.temps.push(data.temp || 0);
-        cachedHistoryData.humids.push(data.humid || 0);
-        cachedHistoryData.lights.push(data.light || 0);
+        if (sensorChanged && data.temp !== undefined && data.humid !== undefined && data.light !== undefined) {
+            // Update last known sensor values
+            lastSensorData = { temp: data.temp, humid: data.humid, light: data.light };
 
-        // Cắt bớt nếu dài quá (giữ 20 điểm)
-        if (cachedHistoryData.labels.length > 20) {
-            cachedHistoryData.labels.shift();
-            cachedHistoryData.temps.shift();
-            cachedHistoryData.humids.shift();
-            cachedHistoryData.lights.shift();
+            // Lấy giờ hiện tại
+            const now = new Date();
+            const timeLabel = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+
+            // Đẩy số liệu mới đang nhảy vào mảng biểu đồ
+            cachedHistoryData.labels.push(timeLabel);
+            cachedHistoryData.temps.push(data.temp || 0);
+            cachedHistoryData.humids.push(data.humid || 0);
+            cachedHistoryData.lights.push(data.light || 0);
+
+            // Cắt bớt nếu dài quá (giữ 20 điểm)
+            if (cachedHistoryData.labels.length > 20) {
+                cachedHistoryData.labels.shift();
+                cachedHistoryData.temps.shift();
+                cachedHistoryData.humids.shift();
+                cachedHistoryData.lights.shift();
+            }
+
+            // Gọi hàm cập nhật biểu đồ (Update nhẹ)
+            updateChartRealtime();
         }
-
-        // Gọi hàm cập nhật biểu đồ (Update nhẹ)
-        updateChartRealtime();
     });
 }
 

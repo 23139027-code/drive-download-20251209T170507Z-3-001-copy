@@ -144,6 +144,47 @@ Chi tiết theo tệp (tiếng Việt):
     + Chiếm toàn bộ chiều rộng nên dễ click hơn
     + Icon chart giúp người dùng hiểu ngay mục đích của button
 
+- CẬP NHẬT 2025-12-15 18:08 (NHÁNH TEST): Sửa lỗi biểu đồ cập nhật khi toggle switches
+  - Vấn đề: Mỗi khi nhấn nút "Nguồn Phòng", gạt công tắc "Quạt Gió" hoặc "Đèn Phòng", biểu đồ bị cập nhật và thêm dữ liệu mới, làm chart kéo dài không đúng
+  - Nguyên nhân: Hàm `showChart()` có listener `onValue` lắng nghe TẤT CẢ thay đổi trên `devices/${deviceId}`, bao gồm cả thay đổi trạng thái (`active`, `fan_active`, `lamp_active`). Mỗi khi có bất kỳ thay đổi nào, code đều đẩy dữ liệu vào `cachedHistoryData` và update chart, dù dữ liệu sensor (temp, humid, light) không thay đổi
+  - Thay đổi chi tiết:
+    + Thêm biến `lastSensorData` để theo dõi giá trị sensor trước đó: `{ temp: null, humid: null, light: null }`
+    + Thêm logic kiểm tra xem dữ liệu sensor có thực sự thay đổi không:
+      ```javascript
+      const sensorChanged = 
+          lastSensorData.temp !== data.temp ||
+          lastSensorData.humid !== data.humid ||
+          lastSensorData.light !== data.light;
+      ```
+    + CHỈ cập nhật chart khi `sensorChanged === true` VÀ dữ liệu sensor hợp lệ (không undefined)
+    + Cập nhật `lastSensorData` sau mỗi lần push dữ liệu vào chart
+  - Code:
+    ```javascript
+    let lastSensorData = { temp: null, humid: null, light: null };
+    
+    onValue(ref(db, `devices/${deviceId}`), (snapshot) => {
+        const data = snapshot.val();
+        // ... update UI elements ...
+        
+        // CHỈ update chart khi sensor data thay đổi
+        const sensorChanged = 
+            lastSensorData.temp !== data.temp ||
+            lastSensorData.humid !== data.humid ||
+            lastSensorData.light !== data.light;
+
+        if (sensorChanged && data.temp !== undefined && data.humid !== undefined && data.light !== undefined) {
+            lastSensorData = { temp: data.temp, humid: data.humid, light: data.light };
+            // ... push to cachedHistoryData and update chart ...
+        }
+    });
+    ```
+  - Lợi ích:
+    + Chart chỉ cập nhật khi có dữ liệu sensor mới thực sự (temp, humid, light thay đổi)
+    + Nhấn nút Nguồn Phòng, Quạt Gió, Đèn Phòng KHÔNG làm chart update
+    + Biểu đồ không bị kéo dài không cần thiết
+    + Performance tốt hơn vì không render chart mỗi lần toggle
+    + Dữ liệu chart chính xác hơn, chỉ phản ánh thay đổi sensor
+
 Khuyến nghị bảo mật & tĩnh tổng quát:
 - Không chèn trực tiếp dữ liệu bên ngoài vào `innerHTML`.
 - Dùng `addEventListener` để đăng ký sự kiện global thay vì gán thuộc tính `window.onclick`.
