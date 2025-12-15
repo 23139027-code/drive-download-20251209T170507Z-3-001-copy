@@ -143,7 +143,6 @@ Chi tiết theo tệp (tiếng Việt):
     + Button màu xanh dương nổi bật, dễ nhận biết
     + Chiếm toàn bộ chiều rộng nên dễ click hơn
     + Icon chart giúp người dùng hiểu ngay mục đích của button
-
 - CẬP NHẬT 2025-12-15 18:08 (NHÁNH TEST): Sửa lỗi biểu đồ cập nhật khi toggle switches
   - Vấn đề: Mỗi khi nhấn nút "Nguồn Phòng", gạt công tắc "Quạt Gió" hoặc "Đèn Phòng", biểu đồ bị cập nhật và thêm dữ liệu mới, làm chart kéo dài không đúng
   - Nguyên nhân: Hàm `showChart()` có listener `onValue` lắng nghe TẤT CẢ thay đổi trên `devices/${deviceId}`, bao gồm cả thay đổi trạng thái (`active`, `fan_active`, `lamp_active`). Mỗi khi có bất kỳ thay đổi nào, code đều đẩy dữ liệu vào `cachedHistoryData` và update chart, dù dữ liệu sensor (temp, humid, light) không thay đổi
@@ -158,6 +157,14 @@ Chi tiết theo tệp (tiếng Việt):
       ```
     + CHỈ cập nhật chart khi `sensorChanged === true` VÀ dữ liệu sensor hợp lệ (không undefined)
     + Cập nhật `lastSensorData` sau mỗi lần push dữ liệu vào chart
+    + Code mới:
+      ```javascript
+      // ... (code checks sensor changes) ...
+      // Chỉ cần ít nhất 1 sensor có data hợp lệ
+      const hasValidData = data.temp != null || data.humid != null || data.light != null;
+      // ...
+      ```
+    + Lợi ích: Fix lỗi chart không chạy khi light sensor chưa có dữ liệu
   - Code:
     ```javascript
     let lastSensorData = { temp: null, humid: null, light: null };

@@ -884,6 +884,14 @@ window.closeReportDetail = () => {
     document.getElementById('report-detail').style.display = 'none';
 };
 
+// Đóng modal báo cáo khi click ra vùng ngoài (overlay)
+window.addEventListener('click', (e) => {
+    const reportModal = document.getElementById('report-detail');
+    if (e.target === reportModal) {
+        reportModal.style.display = 'none';
+    }
+});
+
 // --- LOGIC XUẤT DỮ LIỆU (History Table) ---
 
 window.fetchAllHistoryData = async function () {
