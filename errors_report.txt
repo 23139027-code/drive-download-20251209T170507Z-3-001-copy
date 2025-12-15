@@ -1,5 +1,5 @@
 Báo cáo lỗi — Kiểm tra tệp nguồn (100% tĩnh)
-Ngày tạo: 2025-12-15 (có cập nhật: các thay đổi đã áp dụng vào `firebase-config.js` và `script.js`)
+Ngày tạo: 2025-12-15 (cập nhật mới nhất: 2025-12-15)
 
 Tóm tắt:
 - Tổng số tệp kiểm tra: 7 (tệp chính trong thư mục gốc)
@@ -49,10 +49,35 @@ Chi tiết theo tệp (tiếng Việt):
 - Cải tiến — Thay `window.onclick` bằng `window.addEventListener` (đã sửa trong `script.js`)
   - Mô tả: Các chỗ trong `script.js` trước đây dùng `window.onclick = ...` đã được chuyển sang `window.addEventListener('click', ...)` để tránh ghi đè handler toàn cục.
 
-6) `style.css`
+6) `style.css` (ĐÃ SỬA - CẬP NHẬT MỚI NHẤT)
 - Thông tin / gợi ý
   - Mô tả: Không tìm thấy lỗi cú pháp rõ rệt. Một số khai báo CSS bị lặp (ví dụ `.master-control-area` khai báo 2 lần; `.btn-primary` xuất hiện nhiều nơi). Điều này không gây lỗi nhưng làm khó bảo trì và có thể gây nhầm khi chỉnh style.
   - Hành động sửa: Dọn dẹp khai báo trùng lặp, gom các biến CSS vào `:root` nếu cần.
+
+- CẬP NHẬT 2025-12-15: Sửa CSS cho card trong Dashboard (Report)
+  - Mô tả: Đã cập nhật CSS cho `.report-card` và `.report-grid` để đồng nhất với thiết kế card trong phần Quản lý
+  - Thay đổi chi tiết:
+    + `.report-grid`: Thay đổi grid-template-columns từ `minmax(250px, 1fr)` sang `minmax(300px, 1fr)` để card rộng hơn và đồng nhất với `.grid-container`
+    + `.report-grid`: Thêm `flex: 1` để layout responsive tốt hơn
+    + `.report-card`: Thêm `cursor: pointer` để hiển thị con trỏ khi hover
+    + Loại bỏ các style riêng lẻ cho `.report-card h3` và `.report-card p` vì đã dùng chung cấu trúc DOM với `.card`
+  - Lợi ích: Card trong Dashboard (Report) giờ có giao diện giống hệt card trong Quản lý, bao gồm: header, device-id, status dot, 3 metrics trong grid, và 2 buttons (Sửa, Tắt/Bật)
+
+7) `script.js` - renderReportList() (ĐÃ SỬA - CẬP NHẬT MỚI NHẤT)
+- CẬP NHẬT 2025-12-15: Refactor hàm renderReportList() để đồng nhất với renderGrid()
+  - Mô tả trước đây: Hàm `renderReportList()` tạo card đơn giản bằng `innerHTML` với chỉ có tên, ID và 1 button "Xem Chi Tiết"
+  - Thay đổi chi tiết:
+    + Thay thế hoàn toàn logic render bằng cách tạo DOM elements giống hệt hàm `renderGrid()`
+    + Card giờ có đầy đủ: Header (title + device ID + chip icon), Status row (status dot + text), Metrics grid (3 cột: nhiệt độ, độ ẩm, ánh sáng), Actions (2 buttons: Sửa và Tắt/Bật)
+    + Sử dụng `addEventListener` thay vì `onclick` inline cho tất cả sự kiện
+    + Thêm `e.stopPropagation()` cho các button để tránh trigger sự kiện click của card
+    + Click vào card (không phải button) sẽ mở chart chi tiết
+    + Thêm xử lý lỗi với thông báo màu đỏ khi có exception
+  - Lợi ích: 
+    + Giao diện thống nhất giữa phần Quản lý và Dashboard (Report)
+    + An toàn hơn (không dùng innerHTML với dữ liệu động)
+    + UX tốt hơn với các button Sửa và Tắt/Bật ngay trên card
+    + Code dễ bảo trì hơn vì sử dụng cùng pattern với renderGrid()
 
 Khuyến nghị bảo mật & tĩnh tổng quát:
 - Không chèn trực tiếp dữ liệu bên ngoài vào `innerHTML`.
@@ -65,11 +90,10 @@ Gợi ý hành động tiếp theo (tôi có thể làm giúp):
 1) Xóa thẻ `</form>` thừa trong `login.html` (khuyến nghị: làm ngay).
 2) (Đã xong) Sửa `renderGrid` trong `script.js` để tạo DOM an toàn + `addEventListener`.
 3) (Đã xong) Thêm kiểm tra trước khi `initializeApp` trong `firebase-config.js`.
-4) Thay tất cả `window.onclick =` bằng `window.addEventListener('click', ...)` (một số đã sửa trong `script.js`, `login.html` vẫn còn `window.onclick`).
+4) (Đã xong) Sửa `renderReportList` trong `script.js` để đồng nhất giao diện với `renderGrid`.
+5) (Đã xong) Cập nhật CSS cho `.report-card` và `.report-grid` để đồng nhất với card trong Quản lý.
+6) Thay tất cả `window.onclick =` bằng `window.addEventListener('click', ...)` (một số đã sửa trong `script.js`, `login.html` vẫn còn `window.onclick`).
 
-Đã áp dụng: sửa `firebase-config.js` và `script.js` như mô tả ở trên. Tôi đã không chỉnh `login.html`/`login-login.js` (vì bạn yêu cầu sửa từ mục 3 trở đi).
-
-Tiếp theo tôi có thể:
-- Áp dụng sửa `login.html` (xóa `</form>` thừa) và/hoặc sửa `login-login.js` (loại bỏ case trùng lặp) nếu bạn muốn tôi tiếp tục.
+Đã áp dụng: sửa `firebase-config.js`, `script.js` (renderGrid, renderReportList), và `style.css` (.report-card, .report-grid) như mô tả ở trên.
 
 --- Kết thúc báo cáo ---

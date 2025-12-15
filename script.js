@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', () => {
-            if(confirm("Bạn có chắc muốn đăng xuất?")) {
+            if (confirm("Bạn có chắc muốn đăng xuất?")) {
                 logout().then(() => window.location.href = 'login.html');
             }
         });
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleBtn.addEventListener('click', () => {
             // Toggle class 'collapsed' cho sidebar
             sidebar.classList.toggle('collapsed');
-            
+
             // Toggle class 'expanded' cho nội dung chính
             mainContent.classList.toggle('expanded');
         });
@@ -61,7 +61,7 @@ function monitorConnection() {
     const statusBadge = document.getElementById('db-status');
     // .info/connected là đường dẫn đặc biệt của Firebase để check kết nối
     const connectedRef = ref(db, ".info/connected");
-    
+
     onValue(connectedRef, (snap) => {
         if (snap.val() === true) {
             statusBadge.textContent = "Firebase: Connected";
@@ -136,7 +136,7 @@ function initFirebaseApp() {
 function renderGrid(data) {
     const grid = document.getElementById('device-grid');
     const addBtn = document.getElementById('btn-open-modal');
-    
+
     // Xóa card cũ, giữ lại nút Add
     const cards = grid.querySelectorAll('.card:not(#btn-open-modal)');
     cards.forEach(card => card.remove());
@@ -231,7 +231,7 @@ let currentEditId = null;
 // 1. Hàm được gọi khi nhấn nút "Sửa" trên Card
 window.triggerEdit = (id, currentName, currentInterval) => {
     currentEditId = id; // Lưu ID vào biến toàn cục
-    
+
     // Điền dữ liệu cũ vào form
     document.getElementById('edit-dev-id').value = id;
     document.getElementById('edit-dev-name').value = currentName;
@@ -263,11 +263,11 @@ function setupEditModal() {
             e.preventDefault();
             const newName = document.getElementById('edit-dev-name').value;
             const newInterval = parseInt(document.getElementById('edit-dev-interval').value);
-            
+
             if (currentEditId && newName && newInterval) {
                 try {
                     // Cập nhật lên Firebase
-                    await update(ref(db, `devices/${currentEditId}`), { 
+                    await update(ref(db, `devices/${currentEditId}`), {
                         name: newName,
                         interval: newInterval
                     });
@@ -290,10 +290,10 @@ function setupEditModal() {
                 try {
                     // Xóa node trên Firebase
                     await remove(ref(db, `devices/${currentEditId}`));
-                    
+
                     alert("Đã xóa thiết bị thành công!");
                     editModal.style.display = "none";
-                    currentEditId = null; 
+                    currentEditId = null;
                     // UI sẽ tự cập nhật nhờ hàm onValue lắng nghe Firebase
                 } catch (err) {
                     alert("Lỗi xóa: " + err.message);
@@ -319,11 +319,11 @@ function setupModal() {
     const form = document.getElementById('add-form');
 
 
-    if(btn) btn.onclick = () => modal.style.display = "block";
-    if(span) span.onclick = () => modal.style.display = "none";
-    window.addEventListener('click', (e) => { if(e.target == modal) modal.style.display = "none"; });
+    if (btn) btn.onclick = () => modal.style.display = "block";
+    if (span) span.onclick = () => modal.style.display = "none";
+    window.addEventListener('click', (e) => { if (e.target == modal) modal.style.display = "none"; });
 
-    if(form) {
+    if (form) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const name = document.getElementById('dev-name').value;
@@ -337,14 +337,14 @@ function setupModal() {
                 mode: 'periodic', // Mặc định là chế độ tự động đo
                 interval: interval // Lưu chu kỳ vào Firebase
             };
-            
+
             try {
                 // Khi lưu vào Firebase, simulator (ESP32) sẽ tự đọc được nếu nó lắng nghe realtime
                 await update(ref(db, `devices/${id}`), deviceConfig);
                 alert("Thêm thiết bị thành công!");
                 modal.style.display = "none";
                 form.reset();
-            } catch(err) {
+            } catch (err) {
                 alert("Lỗi: " + err.message);
             }
         });
@@ -353,7 +353,7 @@ function setupModal() {
 
 function setupMasterSwitch() {
     const btn = document.getElementById('master-switch');
-    if(!btn) return;
+    if (!btn) return;
 
     // 1. Xử lý khi nhấn nút
     btn.addEventListener('click', async () => {
@@ -365,7 +365,7 @@ function setupMasterSwitch() {
         try {
             // Lấy danh sách tất cả thiết bị từ Firebase về
             const snapshot = await get(ref(db, 'devices'));
-            
+
             if (snapshot.exists()) {
                 const devices = snapshot.val();
                 const updates = {};
@@ -381,7 +381,7 @@ function setupMasterSwitch() {
 
                 // Cập nhật giao diện nút ngay lập tức
                 updateMasterButtonUI(targetState);
-                
+
                 // Thông báo nhỏ
                 // alert(targetState ? "Đã KÍCH HOẠT toàn bộ hệ thống!" : "Đã NGẮT toàn bộ hệ thống!");
             }
@@ -392,7 +392,7 @@ function setupMasterSwitch() {
 
     // 2. Hàm cập nhật giao diện nút Master
     function updateMasterButtonUI(isOn) {
-        if(isOn) {
+        if (isOn) {
             // Trạng thái: Hệ thống đang BẬT -> Hiện nút để TẮT
             btn.className = 'master-btn is-on';
             btn.innerHTML = '<i class="fa-solid fa-power-off"></i> <span>TẮT TOÀN BỘ HỆ THỐNG</span>';
@@ -408,7 +408,7 @@ function setupMasterSwitch() {
     // 3. (Tùy chọn) Kiểm tra trạng thái ban đầu khi tải trang
     // Đoạn này giúp nút hiển thị đúng trạng thái thực tế khi vừa vào web
     get(ref(db, 'devices')).then(snapshot => {
-        if(snapshot.exists()) {
+        if (snapshot.exists()) {
             const devices = snapshot.val();
             // Nếu tìm thấy ít nhất 1 thiết bị đang chạy -> Coi như hệ thống đang bật
             const isAnyOn = Object.values(devices).some(d => d.active === true);
@@ -419,7 +419,7 @@ function setupMasterSwitch() {
 
 function updateStatus(id, type, text) {
     const el = document.getElementById(id);
-    if(el) {
+    if (el) {
         el.className = `badge ${type}`;
         el.innerText = text;
     }
@@ -430,7 +430,7 @@ window.toggleDevice = async (id, currentStatus) => {
     try {
         // Đảo ngược trạng thái hiện tại (Đang bật -> tắt, Đang tắt -> bật)
         const newStatus = !currentStatus;
-        
+
         // Tạo object chứa các thông tin cần cập nhật
         const updates = {
             active: newStatus
@@ -445,7 +445,7 @@ window.toggleDevice = async (id, currentStatus) => {
 
         // Gửi cập nhật lên Firebase
         await update(ref(db, `devices/${id}`), updates);
-        
+
         // Giao diện (Checkbox) sẽ tự động cập nhật nhờ hàm onValue đang lắng nghe
     } catch (err) {
         alert("Lỗi cập nhật trạng thái: " + err.message);
@@ -453,16 +453,16 @@ window.toggleDevice = async (id, currentStatus) => {
 };
 
 //  Hàm chuyển đổi Tab (Dashboard <-> Báo cáo)
-window.switchTab = function(tabName) {
-    const dashboardGrid = document.getElementById('device-grid');   
-    const addBtn = document.getElementById('btn-open-modal');       
-    const reportTitleView = document.getElementById('report-view'); 
-    const reportList = document.getElementById('report-list');      
-    const reportDetail = document.getElementById('report-detail');  
-    const masterBtn = document.getElementById('master-switch');   
-    const mainHeaderTitle = document.querySelector('header h1'); 
-    const settingView = document.getElementById('setting-view'); 
-    const exportView = document.getElementById('export-view');  
+window.switchTab = function (tabName) {
+    const dashboardGrid = document.getElementById('device-grid');
+    const addBtn = document.getElementById('btn-open-modal');
+    const reportTitleView = document.getElementById('report-view');
+    const reportList = document.getElementById('report-list');
+    const reportDetail = document.getElementById('report-detail');
+    const masterBtn = document.getElementById('master-switch');
+    const mainHeaderTitle = document.querySelector('header h1');
+    const settingView = document.getElementById('setting-view');
+    const exportView = document.getElementById('export-view');
 
     document.querySelectorAll('.sidebar .menu a').forEach(a => a.classList.remove('active'));
 
@@ -475,16 +475,16 @@ window.switchTab = function(tabName) {
     if (exportView) exportView.style.display = 'none';
 
     if (tabName === 'dashboard') {
-        if (dashboardGrid) dashboardGrid.style.display = 'grid'; 
-        if (addBtn) addBtn.style.display = 'block';              
-        if (masterBtn) masterBtn.style.display = 'flex';         
+        if (dashboardGrid) dashboardGrid.style.display = 'grid';
+        if (addBtn) addBtn.style.display = 'block';
+        if (masterBtn) masterBtn.style.display = 'flex';
         if (mainHeaderTitle) mainHeaderTitle.innerText = 'Quản lý các phòng';
         updateActiveMenu(0);
 
     } else if (tabName === 'report') {
         if (reportTitleView) reportTitleView.style.display = 'block';
-        if (reportList) reportList.style.display = 'grid';     
-        if (masterBtn) masterBtn.style.display = 'none';       
+        if (reportList) reportList.style.display = 'grid';
+        if (masterBtn) masterBtn.style.display = 'none';
         if (mainHeaderTitle) mainHeaderTitle.innerText = 'Báo Cáo & Phân Tích';
 
         if (typeof renderReportList === 'function') renderReportList();
@@ -501,7 +501,7 @@ window.switchTab = function(tabName) {
         if (exportView) exportView.style.display = 'block';
         if (masterBtn) masterBtn.style.display = 'none';
         if (mainHeaderTitle) mainHeaderTitle.innerText = 'Dữ Liệu Tổng Hợp';
-        updateActiveMenu(2); 
+        updateActiveMenu(2);
     }
 }
 
@@ -517,34 +517,117 @@ function updateActiveMenu(index) {
 // Render danh sách phòng ở trang Báo Cáo
 async function renderReportList() {
     const grid = document.getElementById('report-list');
-    if(!grid) return;
+    if (!grid) return;
     grid.innerHTML = '<p style="color:#666">Đang tải dữ liệu...</p>';
-    
+
     try {
         const snapshot = await get(ref(db, 'devices'));
-        grid.innerHTML = ''; 
+        grid.innerHTML = '';
 
         if (snapshot.exists()) {
             const data = snapshot.val();
             Object.keys(data).forEach(deviceId => {
                 const device = data[deviceId];
-                const div = document.createElement('div');
-                div.className = 'report-card'; // Cần CSS cho class này (đã thêm ở bước trước)
-                // CSS inline tạm thời để đảm bảo hiện
-                
-                div.innerHTML = `
-                    <h3 style="margin-top:0">${device.name}</h3>
-                    <p style="color:#666; font-size:0.9rem">ID: ${deviceId}</p>
-                    <button class="btn-sm btn-primary" style="width:100%; margin-top:10px">Xem Chi Tiết</button>
-                `;
-                div.onclick = () => showChart(deviceId, device.name);
-                grid.appendChild(div);
+                if (!device || !device.name) return;
+
+                const card = document.createElement('div');
+                card.className = 'report-card';
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'card-header';
+                const headerLeft = document.createElement('div');
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'card-title';
+                titleDiv.textContent = device.name;
+                const idSpan = document.createElement('span');
+                idSpan.className = 'device-id';
+                idSpan.textContent = deviceId;
+                headerLeft.appendChild(titleDiv);
+                headerLeft.appendChild(idSpan);
+                const chipIcon = document.createElement('i');
+                chipIcon.className = 'fa-solid fa-microchip';
+                chipIcon.style.color = '#6b7280';
+                header.appendChild(headerLeft);
+                header.appendChild(chipIcon);
+
+                // Status row
+                const statusRow = document.createElement('div');
+                statusRow.style.marginBottom = '10px';
+                const statusDot = document.createElement('span');
+                statusDot.className = 'status-dot';
+                const isActive = !!device.active;
+                const statusColor = isActive ? '#10b981' : '#9ca3af';
+                statusDot.style.background = statusColor;
+                const statusText = document.createElement('span');
+                statusText.className = 'status-text';
+                statusText.style.color = statusColor;
+                statusText.textContent = isActive ? `Đang đo (${device.interval || 30}s)` : 'Đã tắt';
+                statusRow.appendChild(statusDot);
+                statusRow.appendChild(statusText);
+
+                // Metrics
+                const metrics = document.createElement('div');
+                metrics.className = 'metrics';
+
+                const makeMetric = (label, value) => {
+                    const item = document.createElement('div');
+                    item.className = 'metric-item';
+                    const lbl = document.createElement('span');
+                    lbl.className = 'metric-label';
+                    lbl.textContent = label;
+                    const val = document.createElement('span');
+                    val.className = 'metric-value';
+                    val.textContent = value;
+                    item.appendChild(lbl);
+                    item.appendChild(val);
+                    return item;
+                };
+
+                metrics.appendChild(makeMetric('NHIỆT ĐỘ', (device.temp !== undefined ? device.temp : '--') + '°C'));
+                metrics.appendChild(makeMetric('ĐỘ ẨM', (device.humid !== undefined ? device.humid : '--') + '%'));
+                metrics.appendChild(makeMetric('ÁNH SÁNG', (device.light !== undefined ? device.light : '--') + ' Lux'));
+
+                // Actions
+                const actions = document.createElement('div');
+                actions.className = 'card-actions';
+
+                const btnEdit = document.createElement('button');
+                btnEdit.className = 'btn-sm';
+                btnEdit.textContent = 'Sửa';
+                btnEdit.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.triggerEdit(deviceId, device.name, device.interval || 30);
+                });
+
+                const btnPower = document.createElement('button');
+                const powerClass = isActive ? 'btn-warning' : 'btn-success';
+                btnPower.className = `btn-sm ${powerClass}`;
+                btnPower.innerHTML = isActive ? '<i class="fa-solid fa-power-off"></i> Tắt' : '<i class="fa-solid fa-play"></i> Bật';
+                btnPower.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.toggleDevice(deviceId, isActive);
+                });
+
+                actions.appendChild(btnEdit);
+                actions.appendChild(btnPower);
+
+                // Compose card - click on card to show chart
+                card.addEventListener('click', () => showChart(deviceId, device.name));
+
+                card.appendChild(header);
+                card.appendChild(statusRow);
+                card.appendChild(metrics);
+                card.appendChild(actions);
+
+                grid.appendChild(card);
             });
         } else {
             grid.innerHTML = '<p>Chưa có thiết bị nào.</p>';
         }
     } catch (err) {
         console.error(err);
+        grid.innerHTML = '<p style="color:#ef4444">Lỗi tải dữ liệu</p>';
     }
 }
 
@@ -560,7 +643,7 @@ function updateChartUIActive(type) {
     const ids = ['btn-chart-temp', 'btn-chart-humid', 'btn-chart-light'];
     ids.forEach(id => {
         const el = document.getElementById(id);
-        if(el) el.classList.remove('active-chart');
+        if (el) el.classList.remove('active-chart');
     });
 
     if (type === 'temp') document.getElementById('btn-chart-temp')?.classList.add('active-chart');
@@ -572,29 +655,29 @@ function updateChartUIActive(type) {
 async function showChart(deviceId, deviceName) {
     console.log("Mở biểu đồ:", deviceName);
     currentReportDeviceId = deviceId;
-    
+
     // 1. Reset & Chuẩn bị giao diện
     updateChartUIActive(null); // Reset nút bấm
     document.getElementById('report-detail').style.display = 'block';
-    
+
     // Cập nhật tên phòng
     const title = document.getElementById('report-title'); // Hoặc id là 'chart-device-name' tùy HTML của bạn
-    if(title) title.innerText = `Phòng: ${deviceName}`;
-    
+    if (title) title.innerText = `Phòng: ${deviceName}`;
+
     // Cuộn xuống
     document.getElementById('report-detail').scrollIntoView({ behavior: 'smooth' });
 
     // 2. Tải lịch sử CŨ (Chỉ tải 1 lần duy nhất để làm nền)
     cachedHistoryData = { labels: [], temps: [], humids: [], lights: [] };
-    
+
     try {
         const historyRef = query(ref(db, `history/${deviceId}`), limitToLast(20));
         const historySnapshot = await get(historyRef); // Dùng get thay vì onValue
-        
+
         if (historySnapshot.exists()) {
             historySnapshot.forEach(child => {
                 const val = child.val();
-                const timeStr = new Date(val.last_update).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                const timeStr = new Date(val.last_update).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 cachedHistoryData.labels.push(timeStr);
                 cachedHistoryData.temps.push(val.temp);
                 cachedHistoryData.humids.push(val.humid);
@@ -612,14 +695,14 @@ async function showChart(deviceId, deviceName) {
     // Nghe đúng cái chỗ mà 3 ô số liệu đang nghe
     onValue(ref(db, `devices/${deviceId}`), (snapshot) => {
         const data = snapshot.val();
-        if(!data) return;
+        if (!data) return;
 
         // --- A. Cập nhật giao diện 3 ô (Code cũ của bạn) ---
         // Nguồn
         const elPower = document.getElementById('detail-power-status');
         const elBoxPower = document.getElementById('stat-power-box');
-        if(elPower && elBoxPower) {
-            if(data.active) {
+        if (elPower && elBoxPower) {
+            if (data.active) {
                 elPower.innerText = "ĐANG BẬT"; elPower.style.color = "#10b981"; elBoxPower.style.borderLeftColor = "#10b981";
                 elBoxPower.onclick = () => window.toggleDevice(deviceId, true);
             } else {
@@ -628,20 +711,20 @@ async function showChart(deviceId, deviceName) {
             }
         }
         // 3 thông số
-        if(document.getElementById('detail-temp')) document.getElementById('detail-temp').innerText = (data.temp || '--') + ' °C';
-        if(document.getElementById('detail-humid')) document.getElementById('detail-humid').innerText = (data.humid || '--') + ' %';
-        if(document.getElementById('detail-light')) document.getElementById('detail-light').innerText = (data.light || '--') + ' Lux';
-        
+        if (document.getElementById('detail-temp')) document.getElementById('detail-temp').innerText = (data.temp || '--') + ' °C';
+        if (document.getElementById('detail-humid')) document.getElementById('detail-humid').innerText = (data.humid || '--') + ' %';
+        if (document.getElementById('detail-light')) document.getElementById('detail-light').innerText = (data.light || '--') + ' Lux';
+
         // Switch
-        if(document.getElementById('toggle-fan')) document.getElementById('toggle-fan').checked = (data.fan_active === true);
-        if(document.getElementById('toggle-lamp')) document.getElementById('toggle-lamp').checked = (data.lamp_active === true);
+        if (document.getElementById('toggle-fan')) document.getElementById('toggle-fan').checked = (data.fan_active === true);
+        if (document.getElementById('toggle-lamp')) document.getElementById('toggle-lamp').checked = (data.lamp_active === true);
 
 
         // --- B. CẬP NHẬT BIỂU ĐỒ (Phần thêm mới để fix lỗi) ---
         // Lấy giờ hiện tại
         const now = new Date();
         const timeLabel = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
-        
+
         // Đẩy số liệu mới đang nhảy vào mảng biểu đồ
         cachedHistoryData.labels.push(timeLabel);
         cachedHistoryData.temps.push(data.temp || 0);
@@ -697,7 +780,7 @@ function drawChartNewLogic() {
     let labelsToDraw = cachedHistoryData.labels;
     // Nếu chưa có dữ liệu nào thì tạo mảng rỗng để không lỗi
     if (!labelsToDraw || labelsToDraw.length === 0) {
-        labelsToDraw = ["--", "--", "--", "--", "--"]; 
+        labelsToDraw = ["--", "--", "--", "--", "--"];
     }
 
     let dataToDraw = [];
@@ -720,11 +803,11 @@ function drawChartNewLogic() {
             dataToDraw = cachedHistoryData.lights;
             labelText = "Ánh Sáng (Lux)"; color = "#eab308"; unit = " Lux";
         }
-        
+
         // Fix lỗi nếu mảng data ngắn hơn mảng label (do mới khởi tạo)
         if (dataToDraw.length < labelsToDraw.length) {
             const diff = labelsToDraw.length - dataToDraw.length;
-            for(let i=0; i<diff; i++) dataToDraw.push(0);
+            for (let i = 0; i < diff; i++) dataToDraw.push(0);
         }
     }
 
@@ -783,7 +866,7 @@ window.toggleFeature = async (feature) => {
     } catch (err) {
         console.error("Lỗi toggle:", err);
         // Nếu lỗi thì trả lại trạng thái cũ cho checkbox
-        document.getElementById(`toggle-${feature}`).checked = !isChecked; 
+        document.getElementById(`toggle-${feature}`).checked = !isChecked;
     }
 };
 window.closeReportDetail = () => {
@@ -792,7 +875,7 @@ window.closeReportDetail = () => {
 
 // --- LOGIC XUẤT DỮ LIỆU (History Table) ---
 
-window.fetchAllHistoryData = async function() {
+window.fetchAllHistoryData = async function () {
     const tbody = document.getElementById('table-body');
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Đang tải dữ liệu từ Firebase...</td></tr>';
 
@@ -801,7 +884,7 @@ window.fetchAllHistoryData = async function() {
         // (Vì trong history chỉ lưu ID chứ không lưu tên phòng)
         const devicesSnap = await get(ref(db, 'devices'));
         const devicesMap = {}; // Tạo từ điển: ID -> Tên Phòng
-        
+
         if (devicesSnap.exists()) {
             const devices = devicesSnap.val();
             Object.keys(devices).forEach(key => {
@@ -812,15 +895,15 @@ window.fetchAllHistoryData = async function() {
         // BƯỚC 2: Lấy dữ liệu lịch sử
         // Lưu ý: Lấy toàn bộ history có thể rất nặng.
         // Ở đây tôi ví dụ lấy 50 dòng cuối của MỖI thiết bị để demo cho nhanh.
-        
+
         let allRows = []; // Mảng chứa tất cả dòng dữ liệu
 
         // Duyệt qua từng ID thiết bị để lấy lịch sử
         const deviceIds = Object.keys(devicesMap);
-        
+
         for (const devId of deviceIds) {
             const devName = devicesMap[devId];
-            
+
             // Query lấy 50 dòng cuối cùng của thiết bị này
             const historyQuery = query(ref(db, `history/${devId}`), limitToLast(50));
             const historySnap = await get(historyQuery);
@@ -874,24 +957,24 @@ window.fetchAllHistoryData = async function() {
 };
 
 // Hàm phụ: Xuất ra Excel (Đơn giản)
-window.exportTableToExcel = function() {
+window.exportTableToExcel = function () {
     const table = document.querySelector(".data-table");
     let html = table.outerHTML;
-    
+
     // Tạo link tải về
     const url = 'data:application/vnd.ms-excel,' + escape(html); // Tạo Blob Excel
     const link = document.createElement("a");
     link.href = url;
-    link.download = "Du_Lieu_IoT_" + new Date().toISOString().slice(0,10) + ".xls";
+    link.download = "Du_Lieu_IoT_" + new Date().toISOString().slice(0, 10) + ".xls";
     link.click();
 }
 
 // --- LOGIC CÀI ĐẶT FIREBASE ---
 
 // 1. Hàm lưu cấu hình khi bấm nút Save
-window.saveFirebaseSettings = function(event) {
+window.saveFirebaseSettings = function (event) {
     event.preventDefault(); // Chặn load lại trang ngay lập tức
-    
+
     const config = {
         apiKey: document.getElementById('cfg-apiKey').value.trim(),
         authDomain: document.getElementById('cfg-authDomain').value.trim(),
@@ -905,7 +988,7 @@ window.saveFirebaseSettings = function(event) {
 
     // Lưu vào bộ nhớ trình duyệt
     localStorage.setItem('user_firebase_config', JSON.stringify(config));
-    
+
     alert("Đã lưu cấu hình! Trang web sẽ tải lại để áp dụng.");
     location.reload(); // Tải lại trang để file firebase-config.js đọc dữ liệu mới
 };
@@ -927,7 +1010,7 @@ function loadSettingsToForm() {
 }
 
 // 3. Hàm xóa cấu hình (Reset)
-window.clearFirebaseSettings = function() {
+window.clearFirebaseSettings = function () {
     if (confirm("Bạn có chắc muốn xóa cấu hình và dùng lại mặc định?")) {
         localStorage.removeItem('user_firebase_config');
         location.reload();
