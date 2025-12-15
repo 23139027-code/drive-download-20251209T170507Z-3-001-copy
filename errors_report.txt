@@ -117,6 +117,33 @@ Chi tiết theo tệp (tiếng Việt):
     + Chỉ có nút "Tắt/Bật" thay đổi trạng thái thiết bị
     + UX phù hợp với mục đích xem báo cáo/dashboard
 
+- CẬP NHẬT 2025-12-15 18:04 (NHÁNH TEST): Thay thế 2 nút bằng 1 nút "Xem Chi Tiết" trong Dashboard (Report)
+  - Yêu cầu: Thay thế 2 nút "Sửa" và "Bật/Tắt" bằng 1 nút duy nhất "Xem Chi Tiết" màu xanh dương
+  - Thay đổi chi tiết:
+    + Xóa 2 buttons: `btnEdit` (nút Sửa) và `btnPower` (nút Bật/Tắt)
+    + Tạo 1 button mới: `btnDetail` với text "Xem Chi Tiết"
+    + Button có class `btn-sm btn-primary` (màu xanh dương)
+    + Button chiếm toàn bộ chiều rộng của card-actions (`width: 100%`)
+    + Thêm icon chart: `<i class="fa-solid fa-chart-line"></i>`
+    + Event handler: gọi `showChart(deviceId, device.name)`
+  - Code:
+    ```javascript
+    const btnDetail = document.createElement('button');
+    btnDetail.className = 'btn-sm btn-primary';
+    btnDetail.style.width = '100%';
+    btnDetail.innerHTML = '<i class="fa-solid fa-chart-line"></i> Xem Chi Tiết';
+    btnDetail.addEventListener('click', () => {
+        showChart(deviceId, device.name);
+    });
+    actions.appendChild(btnDetail);
+    ```
+  - Lợi ích:
+    + Giao diện đơn giản hơn, chỉ 1 button thay vì 2
+    + Mục đích rõ ràng: Dashboard là để xem báo cáo, không phải quản lý
+    + Button màu xanh dương nổi bật, dễ nhận biết
+    + Chiếm toàn bộ chiều rộng nên dễ click hơn
+    + Icon chart giúp người dùng hiểu ngay mục đích của button
+
 Khuyến nghị bảo mật & tĩnh tổng quát:
 - Không chèn trực tiếp dữ liệu bên ngoài vào `innerHTML`.
 - Dùng `addEventListener` để đăng ký sự kiện global thay vì gán thuộc tính `window.onclick`.

@@ -592,23 +592,15 @@ async function renderReportList() {
                 const actions = document.createElement('div');
                 actions.className = 'card-actions';
 
-                const btnEdit = document.createElement('button');
-                btnEdit.className = 'btn-sm';
-                btnEdit.textContent = 'Sửa';
-                btnEdit.addEventListener('click', () => {
+                const btnDetail = document.createElement('button');
+                btnDetail.className = 'btn-sm btn-primary';
+                btnDetail.style.width = '100%';
+                btnDetail.innerHTML = '<i class="fa-solid fa-chart-line"></i> Xem Chi Tiết';
+                btnDetail.addEventListener('click', () => {
                     showChart(deviceId, device.name);
                 });
 
-                const btnPower = document.createElement('button');
-                const powerClass = isActive ? 'btn-warning' : 'btn-success';
-                btnPower.className = `btn-sm ${powerClass}`;
-                btnPower.innerHTML = isActive ? '<i class="fa-solid fa-power-off"></i> Tắt' : '<i class="fa-solid fa-play"></i> Bật';
-                btnPower.addEventListener('click', () => {
-                    window.toggleDevice(deviceId, isActive);
-                });
-
-                actions.appendChild(btnEdit);
-                actions.appendChild(btnPower);
+                actions.appendChild(btnDetail);
 
                 // Compose card
                 card.appendChild(header);
