@@ -129,7 +129,33 @@ function initFirebaseApp() {
         updateStatus('db-status', 'success', 'Firebase: Connected');
         const data = snapshot.val();
         renderGrid(data || {}); // Xử lý trường hợp data null
+        
+        // Cập nhật trạng thái WiFi từ thiết bị đầu tiên có dữ liệu
+        updateWiFiStatus(data);
     });
+}
+
+// Hàm cập nhật trạng thái WiFi
+function updateWiFiStatus(devicesData) {
+    if (!devicesData) {
+        updateStatus('wifi-status', 'error', 'WiFi: Không kết nối');
+        return;
+    }
+    
+    // Lấy thiết bị đầu tiên có wifi_ssid
+    let wifiFound = false;
+    for (const deviceId in devicesData) {
+        const device = devicesData[deviceId];
+        if (device && device.wifi_ssid) {
+            updateStatus('wifi-status', 'success', `WiFi: ${device.wifi_ssid}`);
+            wifiFound = true;
+            break;
+        }
+    }
+    
+    if (!wifiFound) {
+        updateStatus('wifi-status', 'warning', 'WiFi: Không kết nối');
+    }
 }
 
 // Hàm render 
