@@ -1,39 +1,64 @@
 # Hướng Dẫn Tích Hợp ESP32 với Hệ Thống MQTT
 
-## 📡 Kiến Trúc Mới
+## 📡 Kiến Trúc Hệ Thống
 
 ```
-ESP32 ←→ MQTT Broker (broker.emqx.io) ←→ Web Dashboard
+ESP32 ←→ MQTT Broker (Tùy chỉnh) ←→ Web Dashboard
          ↓
-    Firebase (Chỉ lưu trữ lịch sử)
+    Firebase (Chỉ lưu trữ lịch sử & authentication)
 ```
+
+**Lưu ý quan trọng:** 
+- Web Dashboard có thể cấu hình MQTT Broker khác nhau qua giao diện Settings
+- ESP32 cần kết nối cùng broker mà Web đang dùng
+- Mặc định: `broker.emqx.io:1883` (có thể thay đổi)
 
 ## 🔧 Cấu Hình MQTT
 
-### Thông tin kết nối:
-- **Broker**: `broker.emqx.io`
-- **Port**: `1883` (cho ESP32)
-- **WebSocket Port**: `8083` (cho Web)
+### ⚙️ Thông tin kết nối (Có thể thay đổi):
 
-### Topics:
+**QUAN TRỌNG:** Người dùng có thể thay đổi broker trong Web Dashboard (Tab Cấu hình)
 
-#### 1. ESP32 → Web (Gửi dữ liệu sensor)
+**Mặc định:**
+- **Broker Host**: `broker.emqx.io`
+- **Port cho ESP32**: `1883` (MQTT standard)
+- **Port cho Web**: `8083` (WebSocket)
+- **SSL/TLS**: Không (có thể bật)
+- **Username/Password**: Không (có thể thêm)
+
+**Broker phổ biến khác:**
+- HiveMQ: `broker.hivemq.com:1883`
+- Eclipse Mosquitto: `test.mosquitto.org:1883`
+- EMQX Public: `broker.emqx.io:1883`
+- Broker riêng: `your-server.com:1883`
+
+### 📨 Topics (KHÔNG thay đổi):
+
+**Format Topics cố định** - Được hiển thị trong Web Dashboard:
+
+#### 1. ESP32 → Web (Publish - Gửi dữ liệu sensor)
 **Topic**: `DATALOGGER/{deviceId}/DATA`
 
-**Payload** (JSON):
+**Ví dụ:** Nếu deviceId = `esp32_01` thì topic = `DATALOGGER/esp32_01/DATA`
+
+**Payload** (JSON - Required):
 ```json
 {
-  "temp": 27.5,
-  "humid": 65,
-  "lux": 850,
-  "wifi_ssid": "YourWiFiName"
+  "temp": 27.5,      // Nhiệt độ (°C)
+  "humid": 65,       // Độ ẩm (%)
+  "lux": 850,        // Ánh sáng (Lux)
+  "wifi_ssid": "YourWiFiName"  // Tên WiFi đang kết nối
 }
 ```
 
-**Tần suất**: Theo `interval` được cấu hình (mặc định 30s)
+**Tần suất gửi**: 
+- Theo `interval` được cấu hình trong Firebase (mặc định 30s)
+- Chỉ gửi khi device đang active (đã nhận lệnh START)
 
-#### 2. Web → ESP32 (Nhận lệnh điều khiển)
+#### 2. Web → ESP32 (Subscribe - Nhận lệnh điều khiển)
 **Topic**: `DATALOGGER/{deviceId}/CMD`
+
+**Ví dụ:** Subscribe `DATALOGGER/esp32_01/CMD` để nhận lệnh cho esp32_01
 
 **Các lệnh hỗ trợ**:
 
@@ -50,11 +75,12 @@ ESP32 ←→ MQTT Broker (broker.emqx.io) ←→ Web Dashboard
 ### 1. Cài đặt thư viện
 ```cpp
 // Trong Arduino IDE: Library Manager
-// - PubSubClient (by Nick O'Leary)
-// - ArduinoJson (by Benoit Blanchon)
+// - PubSubClient (by Nick O'Leary) - Version 2.8+
+// - ArduinoJson (by Benoit Blanchon) - Version 6.x
+// - DHT sensor library (by Adafruit) - Nếu dùng DHT22
 ```
 
-### 2. Code ESP32
+### 2. Code ESP32 Đầy Đủ
 
 ```cpp
 #include <WiFi.h>
@@ -62,12 +88,26 @@ ESP32 ←→ MQTT Broker (broker.emqx.io) ←→ Web Dashboard
 #include <ArduinoJson.h>
 #include <DHT.h>
 
-// ========== CẤU HÌNH ==========
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* mqtt_server = "broker.emqx.io";
-const int mqtt_port = 1883;
-const char* deviceId = "esp32_01"; // ID thiết bị của bạn
+// ========== CẤU HÌNH - THAY ĐỔI THEO HỆ THỐNG CỦA BẠN ==========
+
+// WiFi
+const char* ssid = "YOUR_WIFI_SSID";           // Tên WiFi
+const char* password = "YOUR_WIFI_PASSWORD";   // Mật khẩu WiFi
+
+// MQTT Broker - PHẢI KHỚP VỚI CẤU HÌNH TRONG WEB DASHBOARD
+const char* mqtt_server = "broker.emqx.io";    // Host broker (xem trong Web Settings)
+const int mqtt_port = 1883;                     // Port MQTT cho ESP32 (không phải WebSocket)
+const char* mqtt_user = "";                     // Username (để trống nếu không cần)
+const char* mqtt_pass = "";                     // Password (để trống nếu không cần)
+
+// Device Info
+const char* deviceId = "esp32_01";             // ID thiết bị - PHẢI KHỚP VỚI FIREBASE
+                                                // Phải trùng với ID khi thêm device trong Web
+
+// QUAN TRỌNG: 
+// - Nếu Web dùng broker khác, cập nhật mqtt_server ở đây
+// - Nếu broker yêu cầu auth, điền mqtt_user và mqtt_pass
+// - deviceId phải giống với ID trong Firebase và Web Dashboard
 
 // ========== CHÂN KẾT NỐI ==========
 #define DHTPIN 4
@@ -174,19 +214,67 @@ void callback(char* topic, byte* payload, unsigned int length) {
 // ========== KẾT NỐI MQTT ==========
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    Serial.print("Attempting MQTT connection to ");
+    Serial.print(mqtt_server);
+    Serial.print(":");
+    Serial.print(mqtt_port);
+    Serial.print("...");
     
-    String clientId = "ESP32Client-" + String(deviceId);
+    String clientId = "ESP32Client-" + String(deviceId) + "-" + String(random(0xffff), HEX);
     
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
+    // Kết nối với hoặc không có username/password
+    bool connected = false;
+    if (strlen(mqtt_user) > 0) {
+      // Có authentication
+      connected = client.connect(clientId.c_str(), mqtt_user, mqtt_pass);
+    } else {
+      // Không cần authentication
+      connected = client.connect(clientId.c_str());
+    }
+    
+    if (connected) {
+      Serial.println("connected!");
+      Serial.print("Client ID: ");
+      Serial.println(clientId);
+      
       // Subscribe topic lệnh
-      client.subscribe(topicCmd.c_str());
-      Serial.println("Subscribed to: " + topicCmd);
+      if (client.subscribe(topicCmd.c_str())) {
+        Serial.print("✓ Subscribed to: ");
+        Serial.println(topicCmd);
+      } else {
+        Serial.println("✗ Failed to subscribe!");
+      }
+      
+      // Gửi thông báo kết nối thành công
+      StaticJsonDocument<100> doc;
+      doc["status"] = "connected";
+      doc["device"] = deviceId;
+      String output;
+      serializeJson(doc, output);
+      client.publish(topicData.c_str(), output.c_str());
+      
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      Serial.print(" | Error: ");
+      
+      // Giải thích mã lỗi
+      switch(client.state()) {
+        case -4: Serial.println("Connection timeout"); break;
+        case -3: Serial.println("Connection lost"); break;
+        case -2: Serial.println("Connect failed"); break;
+        case -1: Serial.println("Disconnected"); break;
+        case  1: Serial.println("Bad protocol"); break;
+        case  2: Serial.println("Bad client ID"); break;
+        case  3: Serial.println("Unavailable"); break;
+        case  4: Serial.println("Bad credentials"); break;
+        case  5: Serial.println("Unauthorized"); break;
+        default: Serial.println("Unknown error"); break;
+      }
+      
+      Serial.println("→ Kiểm tra: mqtt_server, mqtt_port, mqtt_user, mqtt_pass");
+      Serial.println("→ Đảm bảo khớp với cấu hình trong Web Dashboard (Tab Settings)");
+      Serial.println("Retry in 5 seconds...");
       delay(5000);
     }
   }
@@ -270,15 +358,19 @@ void loop() {
 }
 ```
 
-## 🔄 Luồng Hoạt Động
+## 🔄 Luồng Hoạt Động Chi Tiết
 
 ### 1. Khởi động ESP32
 ```
 ESP32 → Kết nối WiFi
-     → Kết nối MQTT Broker
-     → Subscribe topic DATALOGGER/esp32_01/CMD
-     → Đợi lệnh START
+     → Kết nối MQTT Broker (theo cấu hình trong code)
+     → Subscribe topic DATALOGGER/{deviceId}/CMD
+     → Gửi message "connected" để báo đã online
+     → Chờ lệnh START từ Web Dashboard
+     → (deviceActive = false, không gửi data)
 ```
+
+**Lưu ý:** ESP32 phải kết nối đúng broker mà Web đang dùng!
 
 ### 2. Khi nhận lệnh START từ Web
 ```
@@ -306,28 +398,156 @@ ESP32 ← Nhận lệnh
 
 ## 🛠️ Cấu Hình Nâng Cao
 
-### 1. Thay đổi Device ID
-Trong Firebase, thêm device với ID tương ứng:
+### 1. Đồng bộ Broker giữa Web và ESP32
+
+**QUAN TRỌNG:** Web và ESP32 PHẢI dùng cùng MQTT Broker!
+
+**Cách kiểm tra broker đang dùng:**
+
+1. **Trong Web Dashboard:**
+   - Vào tab **Cấu hình** (Settings)
+   - Xem phần "Cấu hình MQTT Broker"
+   - Ghi chú: Host, Port, Username/Password (nếu có)
+
+2. **Trong ESP32 Code:**
+   - Cập nhật các biến:
+   ```cpp
+   const char* mqtt_server = "broker.emqx.io";  // ← Phải khớp với Web
+   const int mqtt_port = 1883;                   // ← Port cho ESP32
+   const char* mqtt_user = "";                   // ← Username (nếu Web dùng)
+   const char* mqtt_pass = "";                   // ← Password (nếu Web dùng)
+   ```
+
+3. **Test kết nối:**
+   - Trong Web: Nhấn nút "Test Kết Nối" trong Settings
+   - Trong ESP32: Xem Serial Monitor khi khởi động
+   - Cả hai phải hiển thị "Connected" với cùng broker
+
+**Ví dụ các broker phổ biến:**
+
+| Broker | Host | Port ESP32 | Port Web | SSL | Auth |
+|--------|------|------------|----------|-----|------|
+| EMQX Public | broker.emqx.io | 1883 | 8083 | ✗ | ✗ |
+| HiveMQ Public | broker.hivemq.com | 1883 | 8000 | ✗ | ✗ |
+| Mosquitto Test | test.mosquitto.org | 1883 | 8080 | ✗ | ✗ |
+| EMQX SSL | broker.emqx.io | 8883 | 8084 | ✓ | ✗ |
+| Private Broker | your-server.com | 1883 | 8083 | ? | ✓ |
+
+### 2. Thay đổi Device ID
+
+**Bước 1:** Chọn Device ID duy nhất (ví dụ: `esp32_living_room`)
+
+**Bước 2:** Cập nhật trong ESP32:
+```cpp
+const char* deviceId = "esp32_living_room";  // ← ID mới
+```
+
+**Bước 3:** Trong Web Dashboard:
+- Vào tab **Quản lý**
+- Nhấn **Thêm Thiết Bị**
+- Nhập **Device ID**: `esp32_living_room`
+- Nhập tên: "Phòng Khách"
+- Chọn interval: 30s
+- Lưu
+
+**Bước 4:** ESP32 sẽ tự động:
+- Subscribe `DATALOGGER/esp32_living_room/CMD`
+- Publish `DATALOGGER/esp32_living_room/DATA`
+
+Firebase structure:
 ```
 devices/
-  └─ esp32_01/
+  └─ esp32_living_room/
       ├─ name: "Phòng Khách"
       ├─ active: false
       ├─ interval: 30
-      └─ mode: "periodic"
+      ├─ fan_active: false
+      ├─ lamp_active: false
+      └─ ac_active: false
 ```
 
-### 2. Điều chỉnh chu kỳ gửi
-ESP32 có thể đọc `interval` từ Firebase hoặc nhận qua MQTT:
+### 3. Sử dụng SSL/TLS (Bảo mật cao hơn)
+
+Nếu Web Dashboard cấu hình dùng SSL:
+
+**Thay đổi trong ESP32:**
+```cpp
+#include <WiFiClientSecure.h>
+
+WiFiClientSecure espClient;  // ← Thay WiFiClient
+PubSubClient client(espClient);
+
+void setup() {
+  // ...
+  espClient.setInsecure();  // ← Bỏ qua verify certificate (cho test)
+  // Hoặc dùng certificate thật:
+  // espClient.setCACert(ca_cert);
+  
+  client.setServer(mqtt_server, 8883);  // ← Port SSL (8883 thay vì 1883)
+  // ...
+}
+```
+
+**Cảnh báo:** setInsecure() không an toàn cho production!
+
+### 4. Điều chỉnh chu kỳ gửi động
+
+ESP32 có thể nhận lệnh thay đổi interval từ Web:
+
+**Thêm vào hàm `callback()`:**
+```cpp
+else if (cmd == "INTERVAL") {
+  int newInterval = val.toInt();
+  if (newInterval >= 5 && newInterval <= 300) {  // 5s-5min
+    sendInterval = newInterval * 1000;
+    Serial.println("✓ Interval changed to: " + String(newInterval) + "s");
+  } else {
+    Serial.println("✗ Invalid interval: " + val);
+  }
+}
+```
+
+**Web có thể gửi:**
 ```json
 {"cmd":"INTERVAL","val":"10"}
 ```
 
-Thêm vào hàm `callback()`:
+### 5. Lưu trạng thái vào EEPROM/Preferences
+
+Để ESP32 nhớ trạng thái sau khi reset:
+
 ```cpp
-else if (cmd == "INTERVAL") {
-  sendInterval = val.toInt() * 1000;
-  Serial.println("Interval changed to: " + String(sendInterval));
+#include <Preferences.h>
+
+Preferences prefs;
+
+void setup() {
+  prefs.begin("iot-app", false);
+  
+  // Đọc trạng thái cũ
+  deviceActive = prefs.getBool("active", false);
+  fanActive = prefs.getBool("fan", false);
+  lampActive = prefs.getBool("lamp", false);
+  acActive = prefs.getBool("ac", false);
+  
+  // Khôi phục output pins
+  digitalWrite(FAN_PIN, fanActive ? HIGH : LOW);
+  digitalWrite(LAMP_PIN, lampActive ? HIGH : LOW);
+  digitalWrite(AC_PIN, acActive ? HIGH : LOW);
+}
+
+void callback(...) {
+  // Sau khi xử lý lệnh, lưu lại
+  if (cmd == "START") {
+    deviceActive = true;
+    prefs.putBool("active", true);
+  }
+  else if (cmd == "FAN") {
+    fanActive = (val == "1");
+    prefs.putBool("fan", fanActive);
+    // ...
+  }
+  // Tương tự cho LAMP, AC
 }
 ```
 

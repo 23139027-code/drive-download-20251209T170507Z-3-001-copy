@@ -13,12 +13,42 @@ let cachedHistoryData = { labels: [], temps: [], humids: [], lights: [] };
 requireAuth();
 
 // --- CẤU HÌNH MQTT ---
-const mqttConfig = {
-    host: "broker.emqx.io",
-    port: 8083,
-    path: "/mqtt",
-    clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
-};
+// Load cấu hình MQTT từ localStorage hoặc dùng mặc định
+function loadMQTTConfig() {
+    const savedConfig = localStorage.getItem('mqtt_config');
+    if (savedConfig) {
+        try {
+            const config = JSON.parse(savedConfig);
+            return {
+                host: config.host || "broker.emqx.io",
+                port: config.port || 8083,
+                path: config.path || "/mqtt",
+                useSSL: config.useSSL || false,
+                username: config.username || "",
+                password: config.password || "",
+                keepalive: config.keepalive || 60,
+                reconnect: config.reconnect !== false,
+                clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
+            };
+        } catch (e) {
+            console.error("Lỗi load MQTT config:", e);
+        }
+    }
+    // Cấu hình mặc định
+    return {
+        host: "broker.emqx.io",
+        port: 8083,
+        path: "/mqtt",
+        useSSL: false,
+        username: "",
+        password: "",
+        keepalive: 60,
+        reconnect: true,
+        clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
+    };
+}
+
+const mqttConfig = loadMQTTConfig();
 let mqttClient;
 let subscribedDevices = new Set(); // Track các thiết bị đã subscribe
 
@@ -91,10 +121,11 @@ function connectMQTT() {
             handleMQTTMessage(message);
         };
         
-        mqttClient.connect({
+        // Tạo connect options từ config
+        const connectOptions = {
             onSuccess: () => {
-                console.log("MQTT Connected");
-                updateStatus('mqtt-status', 'success', 'MQTT: Connected');
+                console.log("MQTT Connected to", mqttConfig.host);
+                updateStatus('mqtt-status', 'success', `MQTT: Connected (${mqttConfig.host})`);
                 // Subscribe các topic từ devices hiện có
                 subscribeToAllDevices();
             },
@@ -102,8 +133,19 @@ function connectMQTT() {
                 console.log("MQTT Fail", e);
                 updateStatus('mqtt-status', 'error', 'MQTT: Failed');
             },
-            useSSL: false
-        });
+            useSSL: mqttConfig.useSSL,
+            keepAliveInterval: mqttConfig.keepalive,
+            reconnect: mqttConfig.reconnect,
+            timeout: 10
+        };
+        
+        // Thêm username/password nếu có
+        if (mqttConfig.username) {
+            connectOptions.userName = mqttConfig.username;
+            connectOptions.password = mqttConfig.password;
+        }
+        
+        mqttClient.connect(connectOptions);
     } catch (e) {
         console.error("Lỗi khởi tạo MQTT:", e);
     }
@@ -1173,51 +1215,121 @@ window.exportTableToExcel = function () {
     link.click();
 }
 
-// --- LOGIC CÀI ĐẶT FIREBASE ---
+// --- LOGIC CÀI ĐẶT MQTT ---
 
-// 1. Hàm lưu cấu hình khi bấm nút Save
-window.saveFirebaseSettings = function (event) {
-    event.preventDefault(); // Chặn load lại trang ngay lập tức
+// 1. Hàm lưu cấu hình MQTT khi bấm nút Save
+window.saveMQTTSettings = function (event) {
+    event.preventDefault();
 
     const config = {
-        apiKey: document.getElementById('cfg-apiKey').value.trim(),
-        authDomain: document.getElementById('cfg-authDomain').value.trim(),
-        databaseURL: document.getElementById('cfg-databaseURL').value.trim(),
-        projectId: document.getElementById('cfg-projectId').value.trim(),
-        storageBucket: document.getElementById('cfg-storageBucket').value.trim(),
-        messagingSenderId: document.getElementById('cfg-messagingSenderId').value.trim(),
-        appId: document.getElementById('cfg-appId').value.trim(),
-        measurementId: document.getElementById('cfg-measurementId').value.trim()
+        host: document.getElementById('cfg-mqtt-host').value.trim(),
+        port: parseInt(document.getElementById('cfg-mqtt-port').value.trim()),
+        path: document.getElementById('cfg-mqtt-path').value.trim(),
+        useSSL: document.getElementById('cfg-mqtt-ssl').value === 'true',
+        username: document.getElementById('cfg-mqtt-username').value.trim(),
+        password: document.getElementById('cfg-mqtt-password').value.trim(),
+        keepalive: parseInt(document.getElementById('cfg-mqtt-keepalive').value.trim()) || 60,
+        reconnect: document.getElementById('cfg-mqtt-reconnect').value === 'true'
     };
 
-    // Lưu vào bộ nhớ trình duyệt
-    localStorage.setItem('user_firebase_config', JSON.stringify(config));
+    // Validate
+    if (!config.host) {
+        alert("Vui lòng nhập MQTT Broker Host!");
+        return;
+    }
+    if (!config.port || config.port < 1 || config.port > 65535) {
+        alert("Port không hợp lệ! (1-65535)");
+        return;
+    }
 
-    alert("Đã lưu cấu hình! Trang web sẽ tải lại để áp dụng.");
-    location.reload(); // Tải lại trang để file firebase-config.js đọc dữ liệu mới
+    // Lưu vào localStorage
+    localStorage.setItem('mqtt_config', JSON.stringify(config));
+
+    alert("Đã lưu cấu hình MQTT! Trang web sẽ tải lại để áp dụng.");
+    location.reload();
 };
 
-// 2. Hàm điền dữ liệu cũ vào form khi mở tab
+// 2. Hàm điền dữ liệu MQTT cũ vào form khi mở tab
 function loadSettingsToForm() {
-    const savedString = localStorage.getItem('user_firebase_config');
+    const savedString = localStorage.getItem('mqtt_config');
     if (savedString) {
-        const config = JSON.parse(savedString);
-        document.getElementById('cfg-apiKey').value = config.apiKey || '';
-        document.getElementById('cfg-authDomain').value = config.authDomain || '';
-        document.getElementById('cfg-databaseURL').value = config.databaseURL || '';
-        document.getElementById('cfg-projectId').value = config.projectId || '';
-        document.getElementById('cfg-storageBucket').value = config.storageBucket || '';
-        document.getElementById('cfg-messagingSenderId').value = config.messagingSenderId || '';
-        document.getElementById('cfg-appId').value = config.appId || '';
-        document.getElementById('cfg-measurementId').value = config.measurementId || '';
+        try {
+            const config = JSON.parse(savedString);
+            document.getElementById('cfg-mqtt-host').value = config.host || 'broker.emqx.io';
+            document.getElementById('cfg-mqtt-port').value = config.port || 8083;
+            document.getElementById('cfg-mqtt-path').value = config.path || '/mqtt';
+            document.getElementById('cfg-mqtt-ssl').value = config.useSSL ? 'true' : 'false';
+            document.getElementById('cfg-mqtt-username').value = config.username || '';
+            document.getElementById('cfg-mqtt-password').value = config.password || '';
+            document.getElementById('cfg-mqtt-keepalive').value = config.keepalive || 60;
+            document.getElementById('cfg-mqtt-reconnect').value = config.reconnect !== false ? 'true' : 'false';
+        } catch (e) {
+            console.error("Lỗi load cấu hình MQTT:", e);
+        }
+    } else {
+        // Load giá trị mặc định
+        document.getElementById('cfg-mqtt-host').value = 'broker.emqx.io';
+        document.getElementById('cfg-mqtt-port').value = 8083;
+        document.getElementById('cfg-mqtt-path').value = '/mqtt';
+        document.getElementById('cfg-mqtt-ssl').value = 'false';
+        document.getElementById('cfg-mqtt-keepalive').value = 60;
+        document.getElementById('cfg-mqtt-reconnect').value = 'true';
     }
 }
 
-// 3. Hàm xóa cấu hình (Reset)
-window.clearFirebaseSettings = function () {
-    if (confirm("Bạn có chắc muốn xóa cấu hình và dùng lại mặc định?")) {
-        localStorage.removeItem('user_firebase_config');
+// 3. Hàm xóa cấu hình MQTT (Reset)
+window.clearMQTTSettings = function () {
+    if (confirm("Bạn có chắc muốn xóa cấu hình MQTT và dùng lại mặc định?")) {
+        localStorage.removeItem('mqtt_config');
+        alert("Đã xóa cấu hình. Trang sẽ tải lại.");
         location.reload();
+    }
+};
+
+// 4. Hàm test kết nối MQTT
+window.testMQTTConnection = function () {
+    const host = document.getElementById('cfg-mqtt-host').value.trim();
+    const port = document.getElementById('cfg-mqtt-port').value.trim();
+    const path = document.getElementById('cfg-mqtt-path').value.trim();
+    const useSSL = document.getElementById('cfg-mqtt-ssl').value === 'true';
+    const username = document.getElementById('cfg-mqtt-username').value.trim();
+    const password = document.getElementById('cfg-mqtt-password').value.trim();
+
+    if (!host || !port) {
+        alert("Vui lòng nhập đầy đủ Host và Port!");
+        return;
+    }
+
+    alert("Đang test kết nối MQTT...\n\nBroker: " + host + ":" + port + "\nPath: " + path + "\nSSL: " + (useSSL ? "Có" : "Không"));
+
+    try {
+        const testClientId = "TestClient_" + Math.random().toString(16).substr(2, 8);
+        const testClient = new Paho.MQTT.Client(host, parseInt(port), path, testClientId);
+
+        testClient.onConnectionLost = (obj) => {
+            alert("❌ Test thất bại: Mất kết nối\n" + obj.errorMessage);
+        };
+
+        const connectOptions = {
+            onSuccess: () => {
+                alert("✅ Kết nối MQTT thành công!\n\nBroker: " + host + ":" + port + "\n\nBạn có thể lưu cấu hình này.");
+                testClient.disconnect();
+            },
+            onFailure: (e) => {
+                alert("❌ Kết nối MQTT thất bại!\n\nLỗi: " + e.errorMessage + "\n\nVui lòng kiểm tra lại thông tin broker.");
+            },
+            useSSL: useSSL,
+            timeout: 10
+        };
+
+        if (username) {
+            connectOptions.userName = username;
+            connectOptions.password = password;
+        }
+
+        testClient.connect(connectOptions);
+    } catch (e) {
+        alert("❌ Lỗi khởi tạo test MQTT:\n" + e.message);
     }
 };
 

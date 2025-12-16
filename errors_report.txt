@@ -546,5 +546,521 @@ Hành động cần làm ngay:
 
 --- Kết thúc báo cáo ---
 
+========================================
+PHÂN TÍCH VẤN ĐỀ BẢO MẬT & PHÂN QUYỀN (2025-12-16 14:00)
+========================================
 
-test branch test
+🔐 CÂU HỎI: Tại sao mọi tài khoản đều nhìn thấy tất cả ESP32/devices?
+
+🔍 PHÂN TÍCH HIỆN TRẠNG:
+
+1. **VẤN ĐỀ CỐT LÕI:**
+
+   Hiện tại, Firebase Authentication CHỈ đóng vai trò XÁC THỰC (Authentication), 
+   KHÔNG có vai trò PHÂN QUYỀN (Authorization).
+   
+   ```
+   User A đăng nhập → Firebase Auth: ✅ "Đúng mật khẩu"
+                    → Truy cập Database: ✅ "Đọc tất cả /devices"
+   
+   User B đăng nhập → Firebase Auth: ✅ "Đúng mật khẩu"  
+                    → Truy cập Database: ✅ "Đọc tất cả /devices"
+   ```
+   
+   Kết quả: User A và User B đều thấy CHUNG 1 danh sách devices!
+
+2. **NGUYÊN NHÂN KỸ THUẬT:**
+
+   a) **Cấu trúc Database hiện tại** (script.js):
+   ```javascript
+   // Tất cả users đều đọc cùng 1 nơi
+   const devicesRef = ref(db, 'devices');
+   onValue(devicesRef, (snapshot) => {
+       const data = snapshot.val(); // ← Lấy TẤT CẢ devices
+       renderGrid(data);
+   });
+   ```
+   
+   Cấu trúc Firebase:
+   ```
+   devices/
+     ├─ esp32_01/          ← Ai cũng thấy
+     ├─ esp32_02/          ← Ai cũng thấy
+     └─ esp32_03/          ← Ai cũng thấy
+   ```
+
+   b) **Không có liên kết User ↔ Device:**
+   
+   Code hiện tại KHÔNG kiểm tra:
+   - Device này thuộc về user nào?
+   - User hiện tại có quyền truy cập device này không?
+   
+   auth.js chỉ check:
+   ```javascript
+   if (!user) {
+       window.location.href = "login.html"; // ← Chỉ check đã login chưa
+   }
+   // KHÔNG check user có quyền gì
+   ```
+
+   c) **Firebase Security Rules chưa được cấu hình:**
+   
+   Mặc định (hoặc trong quá trình dev), rules thường là:
+   ```json
+   {
+     "rules": {
+       ".read": "auth != null",    // Ai đăng nhập cũng đọc được
+       ".write": "auth != null"    // Ai đăng nhập cũng ghi được
+     }
+   }
+   ```
+   
+   → Tất cả users authenticated đều có TOÀN QUYỀN truy cập database!
+
+3. **KẾT LUẬN:**
+
+   ✅ Firebase Authentication hoạt động ĐÚNG - Nó chỉ xác nhận "đúng user/pass"
+   ❌ Hệ thống THIẾU tầng Authorization - Không phân biệt "user nào sở hữu device nào"
+   ⚠️ Đây là vấn đề THIẾT KẾ, không phải lỗi code
+
+📋 GIẢI PHÁP: 3 PHƯƠNG ÁN TRIỂN KHAI
+
+┌─────────────────────────────────────────────────────────────────┐
+│ PHƯƠNG ÁN 1: CẤU TRÚC DATABASE THEO USER (Khuyến nghị)          │
+└─────────────────────────────────────────────────────────────────┘
+
+Thay đổi cấu trúc Firebase Database:
+
+**Cũ:**
+```
+devices/
+  ├─ esp32_01/
+  │   ├─ name: "Phòng Khách"
+  │   ├─ temp: 27
+  │   └─ ...
+  └─ esp32_02/
+```
+
+**Mới:**
+```
+users/
+  ├─ {userId_A}/              ← UID của User A
+  │   └─ devices/
+  │       ├─ esp32_01/
+  │       │   ├─ name: "Phòng Khách A"
+  │       │   └─ ...
+  │       └─ esp32_02/
+  │
+  └─ {userId_B}/              ← UID của User B
+      └─ devices/
+          └─ esp32_03/
+              ├─ name: "Phòng Khách B"
+              └─ ...
+```
+
+**Thay đổi code (script.js):**
+
+```javascript
+import { auth } from './firebase-config.js';
+
+// Lấy UID của user hiện tại
+const currentUser = auth.currentUser;
+if (!currentUser) {
+    console.error("Chưa đăng nhập!");
+    return;
+}
+const userId = currentUser.uid;
+
+// Chỉ đọc devices của user hiện tại
+const devicesRef = ref(db, `users/${userId}/devices`);
+onValue(devicesRef, (snapshot) => {
+    const data = snapshot.val();
+    renderGrid(data || {});
+});
+
+// Khi thêm device mới
+await set(ref(db, `users/${userId}/devices/${deviceId}`), deviceConfig);
+
+// Khi xóa device
+await remove(ref(db, `users/${userId}/devices/${deviceId}`));
+```
+
+**Firebase Security Rules:**
+```json
+{
+  "rules": {
+    "users": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "$userId === auth.uid",
+        "devices": {
+          "$deviceId": {
+            ".validate": "newData.hasChild('name')"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Ưu điểm:**
+✅ Phân quyền HOÀN TOÀN - User chỉ thấy devices của mình
+✅ Bảo mật CAO - Firebase Rules tự động chặn truy cập trái phép
+✅ Dễ mở rộng - Có thể thêm profile, settings cho mỗi user
+✅ Không cần thay đổi ESP32 code nhiều
+
+**Nhược điểm:**
+⚠️ Phải migrate dữ liệu cũ sang cấu trúc mới
+⚠️ Cần update TOÀN BỘ code đọc/ghi Firebase (15-20 chỗ)
+
+┌─────────────────────────────────────────────────────────────────┐
+│ PHƯƠNG ÁN 2: THÊM TRƯỜNG owner VÀO DEVICES (Đơn giản hơn)       │
+└─────────────────────────────────────────────────────────────────┘
+
+Giữ nguyên cấu trúc, thêm field `owner`:
+
+```
+devices/
+  ├─ esp32_01/
+  │   ├─ name: "Phòng Khách"
+  │   ├─ owner: "userId_A"      ← Thêm field này
+  │   ├─ temp: 27
+  │   └─ ...
+  └─ esp32_02/
+      ├─ owner: "userId_B"
+      └─ ...
+```
+
+**Thay đổi code (script.js):**
+
+```javascript
+// Đọc tất cả devices nhưng filter theo owner
+const devicesRef = ref(db, 'devices');
+onValue(devicesRef, (snapshot) => {
+    const allData = snapshot.val();
+    const currentUserId = auth.currentUser.uid;
+    
+    // Lọc chỉ lấy devices thuộc user hiện tại
+    const myDevices = {};
+    Object.keys(allData || {}).forEach(deviceId => {
+        if (allData[deviceId].owner === currentUserId) {
+            myDevices[deviceId] = allData[deviceId];
+        }
+    });
+    
+    renderGrid(myDevices);
+});
+
+// Khi thêm device mới
+const deviceConfig = {
+    name: name,
+    owner: auth.currentUser.uid,  // ← Thêm owner
+    active: true,
+    // ...
+};
+```
+
+**Firebase Security Rules:**
+```json
+{
+  "rules": {
+    "devices": {
+      "$deviceId": {
+        ".read": "auth != null && data.child('owner').val() === auth.uid",
+        ".write": "auth != null && 
+                  (!data.exists() || data.child('owner').val() === auth.uid)"
+      }
+    }
+  }
+}
+```
+
+**Ưu điểm:**
+✅ Ít thay đổi code hơn (chỉ filter client-side)
+✅ Không cần migrate database structure
+✅ Dễ triển khai nhanh
+
+**Nhược điểm:**
+⚠️ VẪN tải TẤT CẢ devices về client (lãng phí bandwidth)
+⚠️ Có thể leak thông tin nếu Rules cấu hình sai
+⚠️ Query không tối ưu với số lượng lớn devices
+
+┌─────────────────────────────────────────────────────────────────┐
+│ PHƯƠNG ÁN 3: CHIA SẺ DEVICES (Nâng cao - Multi-user)            │
+└─────────────────────────────────────────────────────────────────┘
+
+Cho phép nhiều users cùng quản lý 1 device (ví dụ: gia đình):
+
+```
+devices/
+  └─ esp32_01/
+      ├─ name: "Phòng Khách"
+      ├─ owner: "userId_A"           ← Chủ sở hữu
+      ├─ sharedWith: {               ← Danh sách được chia sẻ
+      │   "userId_B": "read",        ← Chỉ xem
+      │   "userId_C": "write"        ← Được điều khiển
+      │ }
+      └─ ...
+
+// Hoặc cấu trúc ngược lại:
+users/
+  ├─ userId_A/
+  │   └─ deviceAccess/
+  │       ├─ esp32_01: "owner"
+  │       └─ esp32_02: "read"
+  └─ userId_B/
+      └─ deviceAccess/
+          └─ esp32_01: "write"
+```
+
+**Security Rules phức tạp hơn:**
+```json
+{
+  "rules": {
+    "devices": {
+      "$deviceId": {
+        ".read": "auth != null && (
+          data.child('owner').val() === auth.uid ||
+          data.child('sharedWith').child(auth.uid).exists()
+        )",
+        ".write": "auth != null && (
+          data.child('owner').val() === auth.uid ||
+          data.child('sharedWith').child(auth.uid).val() === 'write'
+        )"
+      }
+    }
+  }
+}
+```
+
+**Ưu điểm:**
+✅ Tính năng cao cấp - Chia sẻ thiết bị trong gia đình
+✅ Phân quyền chi tiết (read/write/admin)
+✅ Linh hoạt cho nhiều use-case
+
+**Nhược điểm:**
+⚠️ Phức tạp nhất - Khó implement và maintain
+⚠️ Cần UI quản lý chia sẻ
+⚠️ Rules phức tạp, dễ lỗi bảo mật
+
+📊 SO SÁNH & KHUYẾN NGHỊ
+
+| Tiêu chí | Phương án 1 | Phương án 2 | Phương án 3 |
+|----------|-------------|-------------|-------------|
+| Độ khó   | ⭐⭐⭐       | ⭐⭐        | ⭐⭐⭐⭐⭐   |
+| Bảo mật  | ⭐⭐⭐⭐⭐   | ⭐⭐⭐      | ⭐⭐⭐⭐    |
+| Hiệu suất| ⭐⭐⭐⭐⭐   | ⭐⭐        | ⭐⭐⭐⭐    |
+| Mở rộng  | ⭐⭐⭐⭐⭐   | ⭐⭐⭐      | ⭐⭐⭐⭐⭐   |
+
+**🎯 KHUYẾN NGHỊ:**
+
+Cho dự án hiện tại: **PHƯƠNG ÁN 1** (Cấu trúc theo User)
+
+Lý do:
+1. Bảo mật tốt nhất - Firebase tự động chặn truy cập
+2. Performance tốt - Chỉ query data cần thiết
+3. Phù hợp IoT cá nhân - Mỗi người quản lý devices riêng
+4. Dễ maintain lâu dài
+
+Nếu cần triển khai nhanh tạm thời: **PHƯƠNG ÁN 2**
+Nếu dự án cần tính năng chia sẻ: **PHƯƠNG ÁN 3**
+
+🔨 HƯỚNG DẪN TRIỂN KHAI PHƯƠNG ÁN 1 (CHI TIẾT)
+
+**Bước 1: Cấu hình Firebase Security Rules**
+
+Vào Firebase Console → Realtime Database → Rules:
+```json
+{
+  "rules": {
+    "users": {
+      "$userId": {
+        ".read": "$userId === auth.uid",
+        ".write": "$userId === auth.uid",
+        "devices": {
+          "$deviceId": {
+            ".validate": "newData.hasChild('name') && newData.hasChild('active')"
+          }
+        },
+        "history": {
+          "$deviceId": {
+            ".validate": "newData.hasChild('temp') && newData.hasChild('humid')"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Bước 2: Migrate dữ liệu hiện có**
+
+Chạy script này 1 lần trong Console Firebase hoặc tạo file migrate.html:
+```javascript
+import { ref, get, set, remove } from "firebase/database";
+
+async function migrateData() {
+    // Lấy tất cả devices cũ
+    const oldDevicesRef = ref(db, 'devices');
+    const snapshot = await get(oldDevicesRef);
+    
+    if (!snapshot.exists()) return;
+    
+    const devices = snapshot.val();
+    const currentUserId = auth.currentUser.uid; // Gán tất cả cho user hiện tại
+    
+    // Copy sang cấu trúc mới
+    for (const [deviceId, deviceData] of Object.entries(devices)) {
+        await set(ref(db, `users/${currentUserId}/devices/${deviceId}`), deviceData);
+    }
+    
+    // Migrate history nếu có
+    const oldHistoryRef = ref(db, 'history');
+    const historySnap = await get(oldHistoryRef);
+    if (historySnap.exists()) {
+        await set(ref(db, `users/${currentUserId}/history`), historySnap.val());
+    }
+    
+    console.log("Migration complete!");
+    // SAU KHI KIỂM TRA KỸ, có thể xóa data cũ:
+    // await remove(oldDevicesRef);
+    // await remove(oldHistoryRef);
+}
+```
+
+**Bước 3: Cập nhật script.js**
+
+Cần sửa TẤT CẢ các chỗ đọc/ghi Firebase:
+
+```javascript
+// Thêm helper function lấy userId
+function getUserPath(path) {
+    const user = auth.currentUser;
+    if (!user) throw new Error("User not authenticated");
+    return `users/${user.uid}/${path}`;
+}
+
+// Sửa initFirebaseApp()
+function initFirebaseApp() {
+    const devicesRef = ref(db, getUserPath('devices'));
+    onValue(devicesRef, (snapshot) => {
+        // ... existing code
+    });
+}
+
+// Sửa renderReportList()
+function renderReportList() {
+    onValue(ref(db, getUserPath('devices')), (snapshot) => {
+        // ... existing code
+    });
+}
+
+// Sửa showChart()
+async function showChart(deviceId, deviceName) {
+    const historyRef = query(
+        ref(db, getUserPath(`history/${deviceId}`)), 
+        limitToLast(20)
+    );
+    // ... existing code
+}
+
+// Sửa toggleDevice()
+window.toggleDevice = async (id, currentStatus) => {
+    await update(ref(db, getUserPath(`devices/${id}`)), updates);
+    // ... existing code
+}
+
+// Sửa setupModal() - Thêm device
+await update(ref(db, getUserPath(`devices/${id}`)), deviceConfig);
+
+// Sửa setupEditModal() - Sửa device
+await update(ref(db, getUserPath(`devices/${currentEditId}`)), {...});
+
+// Sửa setupEditModal() - Xóa device
+await remove(ref(db, getUserPath(`devices/${currentEditId}`)));
+
+// Sửa setupMasterSwitch()
+const snapshot = await get(ref(db, getUserPath('devices')));
+
+// Sửa fetchAllHistoryData()
+const devicesSnap = await get(ref(db, getUserPath('devices')));
+const historyQuery = query(
+    ref(db, getUserPath(`history/${devId}`)), 
+    limitToLast(50)
+);
+
+// Sửa updateFirebaseFromMQTT() (nếu dùng MQTT)
+await update(ref(db, getUserPath(`devices/${deviceId}`)), updates);
+await push(ref(db, getUserPath(`history/${deviceId}`)), historyData);
+```
+
+**Tổng số chỗ cần sửa: ~15-18 chỗ trong script.js**
+
+**Bước 4: Test kỹ lưỡng**
+
+1. Tạo 2 tài khoản test: userA@test.com, userB@test.com
+2. Login userA → Thêm device → Kiểm tra hiển thị
+3. Logout → Login userB → Kiểm tra KHÔNG thấy device của userA
+4. Thêm device cho userB → Logout → Login userA → Kiểm tra phân biệt rõ ràng
+5. Test tất cả chức năng: thêm/sửa/xóa/toggle/chart/export
+
+🔒 BẢO MẬT BỔ SUNG
+
+Ngoài phân quyền database, nên thêm:
+
+1. **Validate owner khi thêm device:**
+```javascript
+// Đảm bảo không ai có thể fake owner
+const deviceConfig = {
+    name: name,
+    active: true,
+    // KHÔNG cho phép set owner từ client
+};
+// Owner tự động là auth.uid nhờ Firebase Rules
+```
+
+2. **MQTT Security:**
+```javascript
+// Trong topic, thêm userId để phân biệt
+const topic = `DATALOGGER/${userId}/${deviceId}/CMD`;
+
+// ESP32 cần authenticate với username/password riêng
+// Hoặc dùng JWT token từ Firebase
+```
+
+3. **Rate Limiting:**
+Trong Firebase Rules, thêm:
+```json
+".write": "$userId === auth.uid && 
+           !data.exists() || 
+           now - data.child('lastModified').val() > 1000"
+```
+
+⚠️ LƯU Ý QUAN TRỌNG
+
+1. **Backup trước khi migrate:**
+   Vào Firebase Console → Realtime Database → Export JSON
+
+2. **Test trên project Firebase khác trước:**
+   Tạo project test để thử nghiệm trước khi áp dụng production
+
+3. **Không thể rollback dễ dàng:**
+   Sau khi đổi Rules, data cũ có thể không truy cập được
+
+4. **ESP32 cần update:**
+   Nếu ESP32 ghi trực tiếp vào Firebase, cần update path
+
+🎓 KẾT LUẬN
+
+Firebase Authentication BẢN THÂN chỉ là "gatekeeper" - kiểm tra đúng user/pass.
+Việc "ai được xem gì" phải được xử lý bởi:
+1. Database Structure (cấu trúc theo user)
+2. Security Rules (Firebase tự động enforce)
+3. Client-side logic (filter nếu cần)
+
+Hệ thống hiện tại THIẾU bước 1 và 2, nên mọi người đều thấy chung.
+
+Triển khai Phương án 1 sẽ giải quyết HOÀN TOÀN vấn đề này với bảo mật cao nhất.
+
+========================================

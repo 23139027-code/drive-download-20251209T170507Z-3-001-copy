@@ -182,62 +182,83 @@
             <div class="card"
                 style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                 <h2 style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-                    <i class="fa-solid fa-fire"></i> Cấu hình Firebase
+                    <i class="fa-solid fa-network-wired"></i> Cấu hình MQTT Broker
                 </h2>
 
                 <p style="color: #666; font-size: 0.9rem; margin-bottom: 20px;">
-                    Nhập thông tin từ Project Settings trong Firebase Console. Sau khi lưu, trang web sẽ tải lại để áp
-                    dụng.
+                    Cấu hình kết nối MQTT để giao tiếp với ESP32. Sau khi lưu, trang web sẽ tải lại để áp dụng.
                 </p>
 
-                < id="firebase-setup-form" onsubmit="saveFirebaseSettings(event)">
+                <form id="mqtt-setup-form" onsubmit="saveMQTTSettings(event)">
                     <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
                             <div class="form-group">
-                                <label>API Key:</label>
-                                <input type="text" id="cfg-apiKey" required placeholder="AIzaSy..."
+                                <label><i class="fa-solid fa-server"></i> MQTT Broker Host:</label>
+                                <input type="text" id="cfg-mqtt-host" required placeholder="broker.emqx.io"
                                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Ví dụ: broker.emqx.io, mqtt.eclipse.org</small>
                             </div>
-                            <div class="form-group">
-                                <label>Auth Domain:</label>
-                                <input type="text" id="cfg-authDomain" required placeholder="project.firebaseapp.com"
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-plug"></i> WebSocket Port:</label>
+                                <input type="number" id="cfg-mqtt-port" required placeholder="8083"
+                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Port WebSocket (thường là 8083 hoặc 8084)</small>
                             </div>
-                            <div class="form-group">
-                                <label>Database URL:</label>
-                                <input type="text" id="cfg-databaseURL" required
-                                    placeholder="https://...firebasedatabase.app"
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-route"></i> WebSocket Path:</label>
+                                <input type="text" id="cfg-mqtt-path" required placeholder="/mqtt"
+                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Đường dẫn WebSocket (thường là /mqtt)</small>
                             </div>
-                            <div class="form-group">
-                                <label>Project ID:</label>
-                                <input type="text" id="cfg-projectId" required
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-shield-halved"></i> Use SSL/TLS:</label>
+                                <select id="cfg-mqtt-ssl" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                    <option value="false">Không (ws://)</option>
+                                    <option value="true">Có (wss://)</option>
+                                </select>
                             </div>
                         </div>
 
                         <div>
                             <div class="form-group">
-                                <label>Storage Bucket:</label>
-                                <input type="text" id="cfg-storageBucket"
+                                <label><i class="fa-solid fa-user"></i> Username (Tùy chọn):</label>
+                                <input type="text" id="cfg-mqtt-username" placeholder="Để trống nếu không cần"
                                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Username để xác thực MQTT (nếu broker yêu cầu)</small>
                             </div>
-                            <div class="form-group">
-                                <label>Messaging Sender ID:</label>
-                                <input type="text" id="cfg-messagingSenderId"
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-key"></i> Password (Tùy chọn):</label>
+                                <input type="password" id="cfg-mqtt-password" placeholder="Để trống nếu không cần"
+                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Password để xác thực MQTT (nếu broker yêu cầu)</small>
                             </div>
-                            <div class="form-group">
-                                <label>App ID:</label>
-                                <input type="text" id="cfg-appId" required
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-clock"></i> Keep Alive (giây):</label>
+                                <input type="number" id="cfg-mqtt-keepalive" placeholder="60"
+                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                <small style="color: #888;">Thời gian duy trì kết nối (mặc định 60s)</small>
                             </div>
-                            <div class="form-group">
-                                <label>Measurement ID:</label>
-                                <input type="text" id="cfg-measurementId"
-                                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-top: 10px;">
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label><i class="fa-solid fa-sync"></i> Auto Reconnect:</label>
+                                <select id="cfg-mqtt-reconnect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                                    <option value="true">Bật (Khuyến nghị)</option>
+                                    <option value="false">Tắt</option>
+                                </select>
                             </div>
                         </div>
+                    </div>
+
+                    <div style="margin-top: 25px; padding: 15px; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 6px;">
+                        <h4 style="margin: 0 0 10px 0; color: #1e40af;"><i class="fa-solid fa-lightbulb"></i> Thông tin Topic</h4>
+                        <p style="margin: 5px 0; color: #1e3a8a; font-size: 0.9rem;">
+                            <strong>Gửi lệnh đến ESP32:</strong> <code>DATALOGGER/{deviceId}/CMD</code>
+                        </p>
+                        <p style="margin: 5px 0; color: #1e3a8a; font-size: 0.9rem;">
+                            <strong>Nhận dữ liệu từ ESP32:</strong> <code>DATALOGGER/{deviceId}/DATA</code>
+                        </p>
+                        <p style="margin: 5px 0; color: #64748b; font-size: 0.85rem; font-style: italic;">
+                            Xem file ESP32_MQTT_GUIDE.md để biết cách cấu hình ESP32
+                        </p>
                     </div>
 
                     <div class="actions" style="margin-top: 30px; display: flex; gap: 15px;">
@@ -245,11 +266,16 @@
                             style="padding: 12px 25px; cursor: pointer; background: var(--primary-color); color: white; border: none; border-radius: 6px;">
                             <i class="fa-solid fa-save"></i> Lưu Cấu Hình & Khởi Động Lại
                         </button>
-                        <button type="button" onclick="clearFirebaseSettings()"
+                        <button type="button" onclick="clearMQTTSettings()"
                             style="padding: 12px 25px; cursor: pointer; background: #ef4444; color: white; border: none; border-radius: 6px;">
                             <i class="fa-solid fa-trash"></i> Xóa & Dùng Mặc Định
                         </button>
+                        <button type="button" onclick="testMQTTConnection()"
+                            style="padding: 12px 25px; cursor: pointer; background: #10b981; color: white; border: none; border-radius: 6px;">
+                            <i class="fa-solid fa-check-circle"></i> Test Kết Nối
+                        </button>
                     </div>
+                </form>
             </div>
         </div>
 
