@@ -6,7 +6,9 @@ Nhánh hiện tại: test
 PHÂN TÍCH VAI TRÒ MQTT TRONG HỆ THỐNG (2025-12-16)
 ========================================
 
-🔍 KẾT LUẬN CHÍNH:
+⚠️ LƯU Ý: Phần phân tích bên dưới là trạng thái CŨ trước khi triển khai MQTT.
+
+🔍 KẾT LUẬN CHÍNH (TRƯỚC KHI SỬA):
 MQTT trong hệ thống hiện tại là một TÍNH NĂNG CHẾT (Dead Code) - được khai báo, khởi tạo kết nối nhưng HOÀN TOÀN KHÔNG ĐƯỢC SỬ DỤNG trong bất kỳ luồng xử lý nào.
 
 📊 PHÂN TÍCH CHI TIẾT:
@@ -100,7 +102,7 @@ MQTT trong hệ thống hiện tại là một TÍNH NĂNG CHẾT (Dead Code) - 
    - Ẩn hoặc xóa badge #mqtt-status
    - Giữ code để sau này có thể dùng nếu cần
 
-6. KẾT LUẬN:
+6. KẾT LUẬN (TRƯỚC KHI SỬA):
 
    Hệ thống của bạn đang hoạt động HOÀN TOÀN bằng Firebase Realtime Database.
    MQTT chỉ là code thừa không được sử dụng.
@@ -115,6 +117,100 @@ MQTT trong hệ thống hiện tại là một TÍNH NĂNG CHẾT (Dead Code) - 
    ⚠️ Chi phí có thể cao nếu scale lên (nhiều thiết bị, traffic cao)
    ⚠️ Phụ thuộc vào dịch vụ của Google
    ⚠️ Latency có thể cao hơn MQTT trực tiếp (phải qua Firebase server)
+
+========================================
+CẬP NHẬT: TRIỂN KHAI MQTT LÀM KÊNH ĐIỀU KHIỂN CHÍNH (2025-12-16 11:00)
+========================================
+
+✅ ĐÃ HOÀN THÀNH: Chuyển đổi kiến trúc sang sử dụng MQTT cho điều khiển realtime
+
+📊 KIẾN TRÚC MỚI:
+
+   ESP32 ←→ MQTT Broker (broker.emqx.io) ←→ Web Dashboard
+            ↓
+       Firebase (Chỉ lưu trữ & hiển thị lịch sử)
+
+🔧 CÁC THAY ĐỔI ĐÃ THỰC HIỆN:
+
+1. **MQTT Topics**:
+   - Nhận dữ liệu sensor: `DATALOGGER/{deviceId}/DATA`
+   - Gửi lệnh điều khiển: `DATALOGGER/{deviceId}/CMD`
+
+2. **Các hàm MQTT mới**:
+   - `isMQTTConnected()` - Kiểm tra kết nối MQTT
+   - `subscribeToAllDevices()` - Subscribe tất cả devices khi connect
+   - `subscribeDevice(deviceId)` - Subscribe 1 device cụ thể
+   - `handleMQTTMessage(message)` - Xử lý message nhận từ ESP32
+   - `updateFirebaseFromMQTT(deviceId, payload)` - Lưu data vào Firebase
+
+3. **MQTT Message Handler**:
+   - onMessageArrived: Nhận dữ liệu từ ESP32 qua MQTT
+   - Parse JSON payload
+   - Cập nhật Firebase để lưu trữ lịch sử
+   - UI tự động update nhờ Firebase listener
+
+4. **Điều khiển qua MQTT**:
+   - `toggleDevice()`: Gửi START/STOP qua MQTT
+   - `toggleFeature()`: Gửi FAN/LAMP/AC qua MQTT
+   - `setupMasterSwitch()`: Gửi lệnh hàng loạt qua MQTT
+   - `setupModal()`: Subscribe device mới khi thêm
+
+5. **Lệnh MQTT hỗ trợ**:
+   ```
+   START  - Bật thiết bị
+   STOP   - Tắt thiết bị
+   FAN    - Điều khiển quạt (val: "0" hoặc "1")
+   LAMP   - Điều khiển đèn (val: "0" hoặc "1")
+   AC     - Điều khiển máy lạnh (val: "0" hoặc "1")
+   ```
+
+6. **Payload Format**:
+   - ESP32 → Web: `{"temp":27.5,"humid":65,"lux":850,"wifi_ssid":"WiFi"}`
+   - Web → ESP32: `{"cmd":"FAN","val":"1"}`
+
+🎯 LỢI ÍCH:
+
+✅ **Latency thấp hơn**: MQTT trực tiếp, không qua Firebase server
+✅ **Giảm chi phí Firebase**: Chỉ lưu trữ, không dùng cho realtime control
+✅ **Độc lập**: ESP32 không cần Firebase SDK
+✅ **Offline capable**: Có thể cache lệnh khi mất kết nối
+✅ **Scalable**: Dễ dàng thêm nhiều thiết bị
+
+⚠️ YÊU CẦU ESP32:
+
+ESP32 cần được lập trình để:
+1. Kết nối MQTT broker: broker.emqx.io:1883
+2. Subscribe topic: DATALOGGER/{deviceId}/CMD
+3. Publish topic: DATALOGGER/{deviceId}/DATA
+4. Xử lý các lệnh: START, STOP, FAN, LAMP, AC
+5. Gửi dữ liệu sensor theo chu kỳ
+
+📄 Xem file ESP32_MQTT_GUIDE.md để biết chi tiết code ESP32.
+
+🔄 LUỒNG HOẠT ĐỘNG MỚI:
+
+1. User nhấn nút trên Web
+   → Web gửi lệnh qua MQTT (topic: DATALOGGER/esp32_01/CMD)
+   → ESP32 nhận lệnh và thực thi
+   → ESP32 gửi data mới qua MQTT (topic: DATALOGGER/esp32_01/DATA)
+   → Web nhận data và lưu vào Firebase
+   → Firebase listener cập nhật UI
+   
+2. ESP32 đo sensor định kỳ
+   → ESP32 publish data lên MQTT
+   → Web nhận và lưu vào Firebase
+   → Firebase listener cập nhật UI + Chart
+   → Data được lưu vào history để xuất báo cáo
+
+🔒 VAI TRÒ FIREBASE SAU KHI SỬA:
+
+✅ Authentication (đăng nhập/đăng ký)
+✅ Lưu trữ cấu hình thiết bị (name, interval)
+✅ Lưu trữ lịch sử dữ liệu sensor (history)
+✅ Đồng bộ UI giữa các tab/devices
+✅ Xuất dữ liệu ra bảng và biểu đồ
+
+❌ KHÔNG dùng cho điều khiển realtime (đã chuyển sang MQTT)
 
 ========================================
 

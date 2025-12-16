@@ -20,6 +20,7 @@ const mqttConfig = {
     clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
 };
 let mqttClient;
+let subscribedDevices = new Set(); // Track các thiết bị đã subscribe
 
 document.addEventListener('DOMContentLoaded', () => {
     // 2. Gán sự kiện Logout
@@ -77,14 +78,25 @@ function monitorConnection() {
 function connectMQTT() {
     try {
         mqttClient = new Paho.MQTT.Client(mqttConfig.host, mqttConfig.port, mqttConfig.path, mqttConfig.clientId);
+        
+        // Handler khi mất kết nối
         mqttClient.onConnectionLost = (obj) => {
             console.log("MQTT Lost:", obj.errorMessage);
             updateStatus('mqtt-status', 'error', 'MQTT: Lost');
+            subscribedDevices.clear(); // Clear danh sách subscribe
         };
+        
+        // Handler nhận message từ ESP32
+        mqttClient.onMessageArrived = (message) => {
+            handleMQTTMessage(message);
+        };
+        
         mqttClient.connect({
             onSuccess: () => {
                 console.log("MQTT Connected");
                 updateStatus('mqtt-status', 'success', 'MQTT: Connected');
+                // Subscribe các topic từ devices hiện có
+                subscribeToAllDevices();
             },
             onFailure: (e) => {
                 console.log("MQTT Fail", e);
@@ -97,8 +109,8 @@ function connectMQTT() {
     }
 }
 
-function sendCommand(deviceId, cmd, val = "") {
-    // Kiểm tra an toàn: nhiều phiên bản Paho có isConnected() như hàm, hoặc có cờ .connected
+// Hàm kiểm tra MQTT connected
+function isMQTTConnected() {
     let connected = false;
     try {
         if (!mqttClient) connected = false;
@@ -108,18 +120,113 @@ function sendCommand(deviceId, cmd, val = "") {
     } catch (e) {
         connected = false;
     }
+    return connected;
+}
 
-    if (!connected) {
-        alert("Chưa kết nối MQTT!");
-        return;
+// Subscribe tất cả devices khi kết nối MQTT
+async function subscribeToAllDevices() {
+    try {
+        const snapshot = await get(ref(db, 'devices'));
+        if (snapshot.exists()) {
+            const devices = snapshot.val();
+            Object.keys(devices).forEach(deviceId => {
+                subscribeDevice(deviceId);
+            });
+        }
+    } catch (err) {
+        console.error("Lỗi subscribe devices:", err);
+    }
+}
+
+// Subscribe 1 device cụ thể
+function subscribeDevice(deviceId) {
+    if (!isMQTTConnected()) return;
+    
+    const topic = `DATALOGGER/${deviceId}/DATA`;
+    
+    if (!subscribedDevices.has(deviceId)) {
+        try {
+            mqttClient.subscribe(topic);
+            subscribedDevices.add(deviceId);
+            console.log(`Subscribed to: ${topic}`);
+        } catch (e) {
+            console.error(`Lỗi subscribe ${topic}:`, e);
+        }
+    }
+}
+
+// Xử lý message MQTT nhận được từ ESP32
+function handleMQTTMessage(message) {
+    try {
+        const topic = message.destinationName;
+        const payload = JSON.parse(message.payloadString);
+        
+        console.log("MQTT Received:", topic, payload);
+        
+        // Extract deviceId từ topic: DATALOGGER/{deviceId}/DATA
+        const parts = topic.split('/');
+        if (parts.length >= 3 && parts[0] === 'DATALOGGER' && parts[2] === 'DATA') {
+            const deviceId = parts[1];
+            
+            // Cập nhật dữ liệu lên Firebase để lưu trữ lịch sử
+            updateFirebaseFromMQTT(deviceId, payload);
+        }
+    } catch (err) {
+        console.error("Lỗi xử lý MQTT message:", err);
+    }
+}
+
+// Cập nhật dữ liệu từ MQTT lên Firebase (chỉ để lưu trữ)
+async function updateFirebaseFromMQTT(deviceId, payload) {
+    try {
+        const updates = {
+            last_update: Date.now()
+        };
+        
+        // Lưu các giá trị sensor nếu có
+        if (payload.temp !== undefined) updates.temp = payload.temp;
+        if (payload.humid !== undefined) updates.humid = payload.humid;
+        if (payload.lux !== undefined) updates.lux = payload.lux;
+        if (payload.wifi_ssid !== undefined) updates.wifi_ssid = payload.wifi_ssid;
+        
+        // Cập nhật vào devices
+        await update(ref(db, `devices/${deviceId}`), updates);
+        
+        // Lưu vào history nếu có đủ dữ liệu sensor
+        if (payload.temp !== undefined && payload.humid !== undefined && payload.lux !== undefined) {
+            const historyData = {
+                temp: payload.temp,
+                humid: payload.humid,
+                lux: payload.lux,
+                last_update: Date.now()
+            };
+            await push(ref(db, `history/${deviceId}`), historyData);
+        }
+    } catch (err) {
+        console.error("Lỗi cập nhật Firebase:", err);
+    }
+}
+
+// Gửi lệnh điều khiển qua MQTT
+function sendCommand(deviceId, cmd, val = "") {
+    if (!isMQTTConnected()) {
+        alert("Chưa kết nối MQTT! Không thể gửi lệnh.");
+        return false;
     }
 
     const topic = `DATALOGGER/${deviceId}/CMD`;
     const payload = JSON.stringify({ cmd: cmd, val: val });
     const message = new Paho.MQTT.Message(payload);
     message.destinationName = topic;
-    mqttClient.send(message);
-    console.log(`Sent: ${payload}`);
+    
+    try {
+        mqttClient.send(message);
+        console.log(`MQTT Sent [${topic}]:`, payload);
+        return true;
+    } catch (e) {
+        console.error("Lỗi gửi MQTT:", e);
+        return false;
+    }
 }
 
 // --- CÁC HÀM FIREBASE ---
@@ -366,8 +473,15 @@ function setupModal() {
             };
 
             try {
-                // Khi lưu vào Firebase, simulator (ESP32) sẽ tự đọc được nếu nó lắng nghe realtime
+                // Lưu vào Firebase
                 await update(ref(db, `devices/${id}`), deviceConfig);
+                
+                // Subscribe MQTT cho device mới
+                subscribeDevice(id);
+                
+                // Gửi lệnh START qua MQTT để kích hoạt device
+                sendCommand(id, 'START');
+                
                 alert("Thêm thiết bị thành công!");
                 modal.style.display = "none";
                 form.reset();
@@ -382,7 +496,7 @@ function setupMasterSwitch() {
     const btn = document.getElementById('master-switch');
     if (!btn) return;
 
-    // 1. Xử lý khi nhấn nút
+    // 1. Xử lý khi nhấn nút (DÙNG MQTT)
     btn.addEventListener('click', async () => {
         // Kiểm tra xem nút đang ở trạng thái nào (dựa vào class)
         // Nếu đang có class 'is-on' nghĩa là hệ thống đang chạy -> Cần TẮT (false)
@@ -396,11 +510,26 @@ function setupMasterSwitch() {
             if (snapshot.exists()) {
                 const devices = snapshot.val();
                 const updates = {};
+                const cmd = targetState ? 'START' : 'STOP';
 
-                // Tạo lệnh update cho TẤT CẢ thiết bị
+                // Gửi lệnh MQTT cho TẤT CẢ thiết bị
                 Object.keys(devices).forEach(key => {
-                    // Gom tất cả lệnh update vào 1 biến updates
+                    sendCommand(key, cmd);
+                    
+                    // Nếu tắt hệ thống, tắt luôn các thiết bị con
+                    if (!targetState) {
+                        sendCommand(key, 'FAN', '0');
+                        sendCommand(key, 'LAMP', '0');
+                        sendCommand(key, 'AC', '0');
+                    }
+                    
+                    // Cập nhật Firebase để đồng bộ UI
                     updates[`devices/${key}/active`] = targetState;
+                    if (!targetState) {
+                        updates[`devices/${key}/fan_active`] = false;
+                        updates[`devices/${key}/lamp_active`] = false;
+                        updates[`devices/${key}/ac_active`] = false;
+                    }
                 });
 
                 // Gửi 1 lệnh duy nhất lên Firebase (Atomic Update)
@@ -408,9 +537,6 @@ function setupMasterSwitch() {
 
                 // Cập nhật giao diện nút ngay lập tức
                 updateMasterButtonUI(targetState);
-
-                // Thông báo nhỏ
-                // alert(targetState ? "Đã KÍCH HOẠT toàn bộ hệ thống!" : "Đã NGẮT toàn bộ hệ thống!");
             }
         } catch (err) {
             alert("Lỗi thao tác hệ thống: " + err.message);
@@ -452,29 +578,41 @@ function updateStatus(id, type, text) {
     }
 }
 
-// Hàm Bật/Tắt thiết bị từ xa
+// Hàm Bật/Tắt thiết bị từ xa (DÙNG MQTT)
 window.toggleDevice = async (id, currentStatus) => {
     try {
         // Đảo ngược trạng thái hiện tại (Đang bật -> tắt, Đang tắt -> bật)
         const newStatus = !currentStatus;
 
-        // Tạo object chứa các thông tin cần cập nhật
+        // Gửi lệnh qua MQTT
+        const cmd = newStatus ? 'START' : 'STOP';
+        const success = sendCommand(id, cmd);
+        
+        if (!success) {
+            alert("Không thể gửi lệnh qua MQTT!");
+            return;
+        }
+
+        // Cập nhật trạng thái vào Firebase (để đồng bộ UI)
         const updates = {
             active: newStatus
         };
 
-        // LOGIC MỚI: Nếu hành động là TẮT NGUỒN (newStatus == false)
-        // Thì ép tắt luôn toàn bộ các công tắc con
+        // Nếu hành động là TẮT NGUỒN thì tắt luôn toàn bộ các công tắc con
         if (newStatus === false) {
             updates.fan_active = false;    // Tắt quạt
             updates.lamp_active = false;   // Tắt đèn
             updates.ac_active = false;     // Tắt điều hòa
+            
+            // Gửi lệnh tắt các thiết bị con qua MQTT
+            sendCommand(id, 'FAN', '0');
+            sendCommand(id, 'LAMP', '0');
+            sendCommand(id, 'AC', '0');
         }
 
-        // Gửi cập nhật lên Firebase
+        // Cập nhật Firebase để đồng bộ UI
         await update(ref(db, `devices/${id}`), updates);
 
-        // Giao diện (Checkbox) sẽ tự động cập nhật nhờ hàm onValue đang lắng nghe
     } catch (err) {
         alert("Lỗi cập nhật trạng thái: " + err.message);
     }
@@ -881,31 +1019,46 @@ function drawChartNewLogic() {
     });
 }
 
-// Hàm xử lý 3 nút gạt Quick Control
+// Hàm xử lý 3 nút gạt Quick Control (DÙNG MQTT)
 window.toggleFeature = async (feature) => {
     if (!currentReportDeviceId) return;
 
     // Lấy trạng thái hiện tại của checkbox
     let isChecked = false;
     let dbKey = '';
+    let mqttCmd = '';
 
     if (feature === 'fan') {
         isChecked = document.getElementById('toggle-fan').checked;
         dbKey = 'fan_active';
+        mqttCmd = 'FAN';
     } else if (feature === 'lamp') {
         isChecked = document.getElementById('toggle-lamp').checked;
         dbKey = 'lamp_active';
+        mqttCmd = 'LAMP';
     } else if (feature === 'ac') {
         isChecked = document.getElementById('toggle-ac').checked;
         dbKey = 'ac_active';
+        mqttCmd = 'AC';
     }
 
     try {
-        // Cập nhật lên Firebase
+        // Gửi lệnh qua MQTT
+        const mqttVal = isChecked ? '1' : '0';
+        const success = sendCommand(currentReportDeviceId, mqttCmd, mqttVal);
+        
+        if (!success) {
+            // Nếu MQTT fail, trả lại trạng thái cũ
+            document.getElementById(`toggle-${feature}`).checked = !isChecked;
+            alert("Không thể gửi lệnh qua MQTT!");
+            return;
+        }
+        
+        // Cập nhật Firebase để đồng bộ UI
         await update(ref(db, `devices/${currentReportDeviceId}`), {
             [dbKey]: isChecked
         });
-        // Không cần alert, switch sẽ tự giữ trạng thái
+        
     } catch (err) {
         console.error("Lỗi toggle:", err);
         // Nếu lỗi thì trả lại trạng thái cũ cho checkbox
