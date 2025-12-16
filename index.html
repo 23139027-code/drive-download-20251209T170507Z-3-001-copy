@@ -261,6 +261,22 @@
                         </p>
                     </div>
 
+                    <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px;">
+                        <h4 style="margin: 0 0 10px 0; color: #92400e;"><i class="fa-solid fa-wifi"></i> Cấu hình WiFi cho ESP32 lần đầu</h4>
+                        <p style="margin: 5px 0; color: #78350f; font-size: 0.9rem;">
+                            Nếu ESP32 chưa kết nối WiFi, bạn cần cấu hình WiFi trước khi sử dụng hệ thống.
+                        </p>
+                        <p style="margin: 10px 0;">
+                            <button type="button" onclick="showWiFiSetupGuide()" 
+                               style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: #f59e0b; color: white; text-decoration: none; border: none; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.3s;">
+                                <i class="fa-solid fa-book-open"></i> Hướng dẫn kết nối WiFi ESP32
+                            </button>
+                        </p>
+                        <div id="wifi-setup-instructions" style="display: none; margin-top: 15px; padding: 15px; background: white; border-radius: 6px; border: 1px solid #fbbf24;">
+                            <!-- Dynamic instructions will be inserted here -->
+                        </div>
+                    </div>
+
                     <div class="actions" style="margin-top: 30px; display: flex; gap: 15px;">
                         <button type="submit" class="btn-primary"
                             style="padding: 12px 25px; cursor: pointer; background: var(--primary-color); color: white; border: none; border-radius: 6px;">

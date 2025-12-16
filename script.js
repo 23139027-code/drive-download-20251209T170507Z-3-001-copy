@@ -1333,3 +1333,119 @@ window.testMQTTConnection = function () {
     }
 };
 
+// ============================================================
+// WIFI SETUP GUIDE - Hiển thị hướng dẫn kết nối WiFi cho ESP32
+// ============================================================
+window.showWiFiSetupGuide = async function() {
+    const instructionsDiv = document.getElementById('wifi-setup-instructions');
+    
+    if (!instructionsDiv) {
+        console.error('wifi-setup-instructions div not found');
+        return;
+    }
+
+    // Hiển thị loading
+    instructionsDiv.innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 24px; color: #f59e0b;"></i>
+            <p style="margin-top: 10px; color: #78350f;">Đang tải thông tin thiết bị...</p>
+        </div>
+    `;
+    instructionsDiv.style.display = 'block';
+
+    try {
+        // Lấy danh sách devices từ Firebase
+        const devicesRef = ref(db, 'devices');
+        const snapshot = await get(devicesRef);
+        
+        if (!snapshot.exists()) {
+            instructionsDiv.innerHTML = `
+                <p style="color: #dc2626; margin: 0;">
+                    <i class="fa-solid fa-circle-exclamation"></i> 
+                    Không tìm thấy thiết bị nào. Vui lòng thêm thiết bị trước.
+                </p>
+            `;
+            return;
+        }
+        
+        const devices = snapshot.val();
+        let setupDevices = [];
+        
+        // Tìm devices đang ở Setup Mode
+        for (const [id, data] of Object.entries(devices)) {
+            if (data.setup_mode === true) {
+                setupDevices.push({
+                    id: id,
+                    name: data.name || id,
+                    ap_ssid: data.ap_ssid || `ESP32-Setup-${id}`,
+                    ap_ip: data.ap_ip || '192.168.4.1'
+                });
+            }
+        }
+        
+        if (setupDevices.length === 0) {
+            instructionsDiv.innerHTML = `
+                <div style="padding: 10px;">
+                    <p style="color: #059669; margin: 0 0 10px 0;">
+                        <i class="fa-solid fa-circle-check"></i> 
+                        <strong>Tất cả thiết bị đã kết nối WiFi.</strong>
+                    </p>
+                    <p style="color: #666; font-size: 0.85rem; margin: 0;">
+                        Nếu bạn muốn đổi WiFi, vui lòng reset ESP32 hoặc xóa WiFi đã lưu trong code.
+                    </p>
+                </div>
+            `;
+        } else {
+            // Hiển thị hướng dẫn cho từng thiết bị
+            let html = '<h5 style="margin: 0 0 15px 0; color: #92400e;"><i class="fa-solid fa-mobile-screen"></i> Thiết bị cần cấu hình WiFi:</h5>';
+            
+            setupDevices.forEach((dev, index) => {
+                html += `
+                    <div style="margin: 15px 0; padding: 15px; background: #fffbeb; border-radius: 6px; border: 1px solid #fbbf24;">
+                        <h6 style="margin: 0 0 10px 0; color: #92400e; font-weight: 600;">
+                            ${index + 1}. ${dev.name} <span style="color: #999; font-weight: normal; font-size: 0.85em;">(${dev.id})</span>
+                        </h6>
+                        <ol style="margin: 5px 0; padding-left: 20px; color: #78350f; font-size: 0.85rem; line-height: 1.8;">
+                            <li>Bật <strong>điện thoại</strong> hoặc <strong>laptop</strong>, vào <strong>Cài đặt WiFi</strong></li>
+                            <li>Tìm và kết nối vào WiFi: 
+                                <br><span style="display: inline-block; margin: 5px 0; padding: 5px 10px; background: #f59e0b; color: white; border-radius: 4px; font-weight: 600;">
+                                    <i class="fa-solid fa-wifi"></i> ${dev.ap_ssid}
+                                </span>
+                                <br><small style="color: #999;">(Không cần mật khẩu)</small>
+                            </li>
+                            <li>Trình duyệt sẽ <strong>tự động mở</strong> trang cấu hình
+                                <br><small style="color: #666;">Nếu không tự mở, hãy truy cập: 
+                                    <code style="background: white; padding: 2px 6px; border-radius: 3px; color: #f59e0b; font-weight: 600;">${dev.ap_ip}</code>
+                                </small>
+                            </li>
+                            <li>Chọn <strong>WiFi gia đình</strong> của bạn trong danh sách hiển thị</li>
+                            <li>Nhập <strong>mật khẩu WiFi</strong> và nhấn nút <strong>"Save"</strong></li>
+                            <li>ESP32 sẽ tự động kết nối và xuất hiện trên Dashboard trong <strong>vài giây</strong> ✅</li>
+                        </ol>
+                    </div>
+                `;
+            });
+            
+            html += `
+                <div style="margin-top: 15px; padding: 10px; background: #f0f9ff; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                    <p style="margin: 0; color: #1e40af; font-size: 0.85rem;">
+                        <i class="fa-solid fa-circle-info"></i> 
+                        <strong>Mẹo:</strong> Sau khi cấu hình xong, trang này sẽ tự động cập nhật khi ESP32 kết nối thành công.
+                    </p>
+                </div>
+            `;
+            
+            instructionsDiv.innerHTML = html;
+        }
+        
+    } catch (error) {
+        console.error('Error loading WiFi setup guide:', error);
+        instructionsDiv.innerHTML = `
+            <p style="color: #dc2626; margin: 0;">
+                <i class="fa-solid fa-triangle-exclamation"></i> 
+                Lỗi khi tải thông tin: ${error.message}
+            </p>
+        `;
+    }
+};
+

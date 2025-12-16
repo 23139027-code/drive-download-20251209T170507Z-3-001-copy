@@ -563,6 +563,257 @@ void loop() {
 }
 ```
 
+## 📡 Cấu Hình WiFi Lần Đầu (WiFi Setup Mode)
+
+### Mục Đích
+
+Khi ESP32 chưa có thông tin WiFi hoặc không kết nối được, cần chế độ cấu hình WiFi để user nhập SSID và password.
+
+### Thông Tin Cần Gửi Lên Firebase
+
+ESP32 cần gửi 2 thông tin quan trọng để Web hướng dẫn user:
+
+```cpp
+// Thông tin Access Point của ESP32 (khi ở chế độ setup)
+String apSSID = "ESP32-Setup-" + String(deviceId);  // Tên WiFi AP
+String apIP = "192.168.4.1";                        // IP mặc định của AP
+```
+
+### Cấu Trúc Firebase Bổ Sung
+
+Thêm vào `devices/{deviceId}/`:
+
+```json
+{
+  "setup_mode": true,              // ESP32 đang ở chế độ setup
+  "ap_ssid": "ESP32-Setup-esp32_01",  // Tên WiFi AP của ESP32
+  "ap_ip": "192.168.4.1",          // IP của ESP32 AP
+  "wifi_ssid": ""                  // Rỗng khi chưa kết nối
+}
+```
+
+### Code ESP32 - WiFi Setup Mode
+
+#### 1. Kiểm Tra WiFi Kết Nối
+
+```cpp
+#include <WiFi.h>
+#include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager
+
+WiFiManager wifiManager;
+const char* deviceId = "esp32_01";
+bool isSetupMode = false;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Thử kết nối WiFi đã lưu
+  Serial.println("⏳ Connecting to saved WiFi...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();
+  
+  // Đợi 10 giây
+  int timeout = 10;
+  while (WiFi.status() != WL_CONNECTED && timeout > 0) {
+    delay(1000);
+    Serial.print(".");
+    timeout--;
+  }
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    // Không kết nối được → Chuyển sang Setup Mode
+    Serial.println("\n❌ WiFi connection failed. Entering Setup Mode...");
+    enterSetupMode();
+  } else {
+    // Kết nối thành công
+    Serial.println("\n✅ WiFi connected!");
+    Serial.println("IP: " + WiFi.localIP().toString());
+    Serial.println("SSID: " + WiFi.SSID());
+    isSetupMode = false;
+    
+    // Gửi thông tin lên Firebase qua MQTT
+    updateFirebaseStatus();
+  }
+}
+
+void enterSetupMode() {
+  isSetupMode = true;
+  
+  // Tạo tên AP unique
+  String apSSID = "ESP32-Setup-" + String(deviceId);
+  String apPassword = "";  // Không mật khẩu (open network)
+  
+  Serial.println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  Serial.println("🔧 SETUP MODE ACTIVE");
+  Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  Serial.println("AP SSID: " + apSSID);
+  Serial.println("AP IP: 192.168.4.1");
+  Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+  
+  // Gửi thông tin Setup Mode lên Firebase (qua MQTT nếu có kết nối)
+  // Hoặc dùng WiFi tạm để gửi (advanced)
+  
+  // Khởi động WiFiManager Portal
+  wifiManager.setConfigPortalTimeout(300);  // 5 phút timeout
+  wifiManager.autoConnect(apSSID.c_str(), apPassword.c_str());
+  
+  // Sau khi config xong, WiFiManager tự động kết nối
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("✅ WiFi configured successfully!");
+    Serial.println("SSID: " + WiFi.SSID());
+    Serial.println("IP: " + WiFi.localIP().toString());
+    isSetupMode = false;
+    updateFirebaseStatus();
+    ESP.restart();  // Restart để vào chế độ bình thường
+  }
+}
+
+void updateFirebaseStatus() {
+  // Gửi qua MQTT
+  StaticJsonDocument<300> doc;
+  doc["setup_mode"] = isSetupMode;
+  doc["ap_ssid"] = isSetupMode ? ("ESP32-Setup-" + String(deviceId)) : "";
+  doc["ap_ip"] = isSetupMode ? "192.168.4.1" : "";
+  doc["wifi_ssid"] = isSetupMode ? "" : WiFi.SSID();
+  doc["ip_address"] = isSetupMode ? "" : WiFi.localIP().toString();
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  String topic = "DATALOGGER/" + String(deviceId) + "/STATUS";
+  client.publish(topic.c_str(), payload.c_str());
+}
+```
+
+#### 2. Library Cần Thiết
+
+```cpp
+// platformio.ini hoặc Arduino IDE Library Manager
+lib_deps =
+  tzapu/WiFiManager @ ^2.0.16-rc.2
+  knolleary/PubSubClient @ ^2.8
+  bblanchon/ArduinoJson @ ^6.21.3
+```
+
+### Luồng Hoạt Động
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. ESP32 Boot                                               │
+│    ↓                                                        │
+│ 2. Thử kết nối WiFi đã lưu (10s timeout)                   │
+│    ↓                                                        │
+│ 3a. Thành công → Gửi wifi_ssid lên Firebase → Normal Mode │
+│    ↓                                                        │
+│ 3b. Thất bại → Setup Mode                                  │
+│     - Tạo AP: "ESP32-Setup-esp32_01"                       │
+│     - IP: 192.168.4.1                                      │
+│     - Gửi {setup_mode: true, ap_ssid, ap_ip} lên Firebase │
+│     ↓                                                        │
+│ 4. User vào Web Dashboard → Click "Hướng dẫn WiFi"         │
+│    ↓                                                        │
+│ 5. Web lấy ap_ssid, ap_ip từ Firebase                      │
+│    ↓                                                        │
+│ 6. Hiển thị hướng dẫn:                                     │
+│    - Kết nối vào "ESP32-Setup-esp32_01"                   │
+│    - Truy cập 192.168.4.1                                  │
+│    - Chọn WiFi gia đình và nhập password                   │
+│    ↓                                                        │
+│ 7. ESP32 nhận config → Kết nối WiFi → Restart → Normal    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Web Dashboard - Hiển Thị Hướng Dẫn Động
+
+Web sẽ lấy thông tin từ Firebase và hiển thị:
+
+```javascript
+// script.js
+async function showWiFiSetupGuide() {
+  const instructionsDiv = document.getElementById('wifi-setup-instructions');
+  
+  // Lấy danh sách devices từ Firebase
+  const devicesRef = ref(db, 'devices');
+  const snapshot = await get(devicesRef);
+  
+  if (!snapshot.exists()) {
+    instructionsDiv.innerHTML = `
+      <p style="color: #dc2626;">❌ Không tìm thấy thiết bị nào. Vui lòng thêm thiết bị trước.</p>
+    `;
+    instructionsDiv.style.display = 'block';
+    return;
+  }
+  
+  const devices = snapshot.val();
+  let setupDevices = [];
+  
+  // Tìm devices đang ở Setup Mode
+  for (const [id, data] of Object.entries(devices)) {
+    if (data.setup_mode === true) {
+      setupDevices.push({
+        id: id,
+        name: data.name,
+        ap_ssid: data.ap_ssid,
+        ap_ip: data.ap_ip
+      });
+    }
+  }
+  
+  if (setupDevices.length === 0) {
+    instructionsDiv.innerHTML = `
+      <p style="color: #059669;">✅ Tất cả thiết bị đã kết nối WiFi.</p>
+      <p style="color: #666; font-size: 0.85rem;">Nếu bạn muốn đổi WiFi, vui lòng reset ESP32 hoặc xóa WiFi đã lưu trong code.</p>
+    `;
+  } else {
+    // Hiển thị hướng dẫn cho từng thiết bị
+    let html = '<h5 style="margin: 0 0 10px 0; color: #92400e;">📱 Thiết bị cần cấu hình WiFi:</h5>';
+    
+    setupDevices.forEach((dev, index) => {
+      html += `
+        <div style="margin: 15px 0; padding: 15px; background: #fffbeb; border-radius: 6px; border: 1px solid #fbbf24;">
+          <h6 style="margin: 0 0 10px 0; color: #92400e;">${index + 1}. ${dev.name} (${dev.id})</h6>
+          <ol style="margin: 5px 0; padding-left: 20px; color: #78350f; font-size: 0.85rem; line-height: 1.6;">
+            <li>Bật điện thoại/laptop, vào <strong>Cài đặt WiFi</strong></li>
+            <li>Tìm và kết nối vào WiFi: <strong style="color: #ea580c;">${dev.ap_ssid}</strong> (không cần mật khẩu)</li>
+            <li>Trình duyệt tự động mở trang cấu hình<br>
+                <span style="font-size: 0.8rem; color: #666;">(Nếu không tự mở, truy cập: <code>${dev.ap_ip}</code>)</span>
+            </li>
+            <li>Chọn WiFi gia đình của bạn trong danh sách</li>
+            <li>Nhập mật khẩu WiFi và nhấn <strong>"Save"</strong></li>
+            <li>ESP32 sẽ tự động kết nối và xuất hiện trên Dashboard trong vài giây</li>
+          </ol>
+        </div>
+      `;
+    });
+    
+    instructionsDiv.innerHTML = html;
+  }
+  
+  instructionsDiv.style.display = 'block';
+}
+```
+
+### Lưu Ý Quan Trọng
+
+1. **Setup Mode Detection:**
+   - ESP32 gửi `setup_mode: true` lên Firebase khi vào Setup Mode
+   - Web check field này để hiển thị hướng dẫn
+
+2. **AP SSID Naming:**
+   - Format: `ESP32-Setup-{deviceId}`
+   - Ví dụ: `ESP32-Setup-esp32_01`, `ESP32-Setup-esp32_02`
+   - Giúp user biết đang config thiết bị nào
+
+3. **Security:**
+   - AP không password (open) để dễ kết nối
+   - Portal chỉ cho phép config WiFi, không có quyền truy cập khác
+   - Timeout 5 phút để tránh AP mở mãi
+
+4. **Firebase Topic:**
+   - Thêm topic mới: `DATALOGGER/{deviceId}/STATUS`
+   - Để gửi thông tin setup_mode, ap_ssid, ap_ip
+   - Web subscribe topic này để cập nhật realtime
+
 ## 🎓 Kết Luận
 
 **Nguyên tắc đồng bộ:**
@@ -576,10 +827,17 @@ void loop() {
 - Xử lý đúng luồng (START → đọc sensor → gửi MQTT)
 - Output devices tắt khi STOP
 
+**WiFi Setup Flow:**
+- ESP32 tự động vào Setup Mode nếu không kết nối được
+- Gửi thông tin AP (SSID, IP) lên Firebase
+- Web hiển thị hướng dẫn động dựa trên thông tin thực tế
+- User config WiFi qua portal → ESP32 restart → Normal Mode
+
 ---
 
 **📚 Xem thêm:**
 - `ESP32_MQTT_GUIDE.md` - Hướng dẫn cấu hình MQTT chi tiết
 - `errors_report.txt` - Phân tích kiến trúc hệ thống
+- [WiFiManager Library](https://github.com/tzapu/WiFiManager) - Thư viện WiFi setup cho ESP32
 
 **🚀 Happy coding!**
