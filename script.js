@@ -34,14 +34,14 @@ function loadMQTTConfig() {
             console.error("Lỗi load MQTT config:", e);
         }
     }
-    // Cấu hình mặc định
+    // Cấu hình mặc định - HiveMQ Cloud
     return {
-        host: "broker.emqx.io",
-        port: 8083,
+        host: "6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud",
+        port: 8884,
         path: "/mqtt",
-        useSSL: false,
-        username: "",
-        password: "",
+        useSSL: true,
+        username: "",  // Điền username HiveMQ Cloud của bạn
+        password: "",  // Điền password HiveMQ Cloud của bạn
         keepalive: 60,
         reconnect: true,
         clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
@@ -184,15 +184,22 @@ async function subscribeToAllDevices() {
 function subscribeDevice(deviceId) {
     if (!isMQTTConnected()) return;
     
-    const topic = `DATALOGGER/${deviceId}/DATA`;
+    // Subscribe tất cả topics theo cấu trúc SmartHome
+    const topics = [
+        `SmartHome/${deviceId}/data`,      // Dữ liệu sensor
+        `SmartHome/${deviceId}/state`,     // Trạng thái thiết bị
+        `SmartHome/${deviceId}/info`       // Thông tin thiết bị
+    ];
     
     if (!subscribedDevices.has(deviceId)) {
         try {
-            mqttClient.subscribe(topic);
+            topics.forEach(topic => {
+                mqttClient.subscribe(topic);
+                console.log(`Subscribed to: ${topic}`);
+            });
             subscribedDevices.add(deviceId);
-            console.log(`Subscribed to: ${topic}`);
         } catch (e) {
-            console.error(`Lỗi subscribe ${topic}:`, e);
+            console.error(`Lỗi subscribe ${deviceId}:`, e);
         }
     }
 }
@@ -205,13 +212,23 @@ function handleMQTTMessage(message) {
         
         console.log("MQTT Received:", topic, payload);
         
-        // Extract deviceId từ topic: DATALOGGER/{deviceId}/DATA
+        // Extract deviceId và type từ topic: SmartHome/{deviceId}/{type}
         const parts = topic.split('/');
-        if (parts.length >= 3 && parts[0] === 'DATALOGGER' && parts[2] === 'DATA') {
+        if (parts.length >= 3 && parts[0] === 'SmartHome') {
             const deviceId = parts[1];
+            const messageType = parts[2]; // data, state, hoặc info
             
-            // Cập nhật dữ liệu lên Firebase để lưu trữ lịch sử
-            updateFirebaseFromMQTT(deviceId, payload);
+            // Xử lý theo loại message
+            if (messageType === 'data') {
+                // Dữ liệu sensor: temperature, humidity, light
+                updateFirebaseFromMQTT(deviceId, payload, 'data');
+            } else if (messageType === 'state') {
+                // Trạng thái: mode, interval, fan, light, ac
+                updateFirebaseFromMQTT(deviceId, payload, 'state');
+            } else if (messageType === 'info') {
+                // Thông tin: ssid, ip, broker, firmware
+                updateFirebaseFromMQTT(deviceId, payload, 'info');
+            }
         }
     } catch (err) {
         console.error("Lỗi xử lý MQTT message:", err);
@@ -219,30 +236,50 @@ function handleMQTTMessage(message) {
 }
 
 // Cập nhật dữ liệu từ MQTT lên Firebase (chỉ để lưu trữ)
-async function updateFirebaseFromMQTT(deviceId, payload) {
+async function updateFirebaseFromMQTT(deviceId, payload, messageType) {
     try {
         const updates = {
-            last_update: Date.now()
+            last_update: payload.timestamp || Date.now()
         };
         
-        // Lưu các giá trị sensor nếu có
-        if (payload.temp !== undefined) updates.temp = payload.temp;
-        if (payload.humid !== undefined) updates.humid = payload.humid;
-        if (payload.lux !== undefined) updates.lux = payload.lux;
-        if (payload.wifi_ssid !== undefined) updates.wifi_ssid = payload.wifi_ssid;
-        
-        // Cập nhật vào devices
-        await update(ref(db, `devices/${deviceId}`), updates);
-        
-        // Lưu vào history nếu có đủ dữ liệu sensor
-        if (payload.temp !== undefined && payload.humid !== undefined && payload.lux !== undefined) {
-            const historyData = {
-                temp: payload.temp,
-                humid: payload.humid,
-                lux: payload.lux,
-                last_update: Date.now()
-            };
-            await push(ref(db, `history/${deviceId}`), historyData);
+        if (messageType === 'data') {
+            // Dữ liệu sensor từ SmartHome/{deviceId}/data
+            if (payload.temperature !== undefined) updates.temp = payload.temperature;
+            if (payload.humidity !== undefined) updates.humid = payload.humidity;
+            if (payload.light !== undefined) updates.lux = payload.light;
+            
+            // Cập nhật vào devices
+            await update(ref(db, `devices/${deviceId}`), updates);
+            
+            // Lưu vào history nếu có đủ dữ liệu sensor
+            if (payload.temperature !== undefined && payload.humidity !== undefined && payload.light !== undefined) {
+                const historyData = {
+                    temp: payload.temperature,
+                    humid: payload.humidity,
+                    lux: payload.light,
+                    last_update: updates.last_update
+                };
+                await push(ref(db, `history/${deviceId}`), historyData);
+            }
+            
+        } else if (messageType === 'state') {
+            // Trạng thái từ SmartHome/{deviceId}/state
+            if (payload.mode !== undefined) updates.active = payload.mode === 1;
+            if (payload.interval !== undefined) updates.interval = payload.interval;
+            if (payload.fan !== undefined) updates.fan_active = payload.fan === 1;
+            if (payload.light !== undefined) updates.lamp_active = payload.light === 1;
+            if (payload.ac !== undefined) updates.ac_active = payload.ac === 1;
+            
+            await update(ref(db, `devices/${deviceId}`), updates);
+            
+        } else if (messageType === 'info') {
+            // Thông tin từ SmartHome/{deviceId}/info
+            if (payload.ssid !== undefined) updates.wifi_ssid = payload.ssid;
+            if (payload.ip !== undefined) updates.ip_address = payload.ip;
+            if (payload.broker !== undefined) updates.mqtt_broker = payload.broker;
+            if (payload.firmware !== undefined) updates.firmware = payload.firmware;
+            
+            await update(ref(db, `devices/${deviceId}`), updates);
         }
     } catch (err) {
         console.error("Lỗi cập nhật Firebase:", err);
@@ -256,8 +293,37 @@ function sendCommand(deviceId, cmd, val = "") {
         return false;
     }
 
-    const topic = `DATALOGGER/${deviceId}/CMD`;
-    const payload = JSON.stringify({ cmd: cmd, val: val });
+    const topic = `SmartHome/${deviceId}/command`;
+    
+    // Tạo payload theo format mới với cmd_id
+    const cmdPayload = {
+        cmd_id: "web_" + Date.now(),
+        command: cmd.toLowerCase(),
+        params: {}
+    };
+    
+    // Map lệnh sang format mới
+    if (cmd === 'START') {
+        cmdPayload.command = 'set_mode';
+        cmdPayload.params.mode = 1;
+    } else if (cmd === 'STOP') {
+        cmdPayload.command = 'set_mode';
+        cmdPayload.params.mode = 0;
+    } else if (cmd === 'FAN') {
+        cmdPayload.command = 'set_fan';
+        cmdPayload.params.fan = parseInt(val);
+    } else if (cmd === 'LAMP') {
+        cmdPayload.command = 'set_light';
+        cmdPayload.params.light = parseInt(val);
+    } else if (cmd === 'AC') {
+        cmdPayload.command = 'set_ac';
+        cmdPayload.params.ac = parseInt(val);
+    } else if (cmd === 'INTERVAL') {
+        cmdPayload.command = 'set_interval';
+        cmdPayload.params.interval = parseInt(val);
+    }
+    
+    const payload = JSON.stringify(cmdPayload);
     const message = new Paho.MQTT.Message(payload);
     message.destinationName = topic;
     

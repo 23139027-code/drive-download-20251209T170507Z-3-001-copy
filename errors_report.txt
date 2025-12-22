@@ -1,6 +1,342 @@
 Báo cáo lỗi — Kiểm tra tệp nguồn (100% tĩnh)
-Ngày tạo: 2025-12-15 (cập nhật mới nhất: 2025-12-16 10:30)
-Nhánh hiện tại: test
+Ngày tạo: 2025-12-15 (cập nhật mới nhất: 2025-12-22 - CẬP NHẬT HIVEMQ CLOUD)
+Nhánh hiện tại: main
+
+========================================
+CẬP NHẬT MQTT BROKER - HIVEMQ CLOUD (2025-12-22)
+========================================
+
+🎯 MỤC ĐÍCH:
+Chuyển từ broker EMQX public sang HiveMQ Cloud private với SSL/TLS và cấu trúc topic mới phù hợp với ESP32.
+
+📊 THÔNG SỐ MQTT MỚI (Từ ảnh cấu hình ESP32):
+
+Broker: mqtts://6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud:8883
+- Protocol: MQTTS (MQTT over SSL/TLS)
+- Host: 6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud
+- Port MQTT: 8883 (SSL/TLS)
+- Port WebSocket: 8884 (WSS)
+- WebSocket Path: /mqtt
+- SSL/TLS: BẮT BUỘC (useSSL: true)
+- Authentication: Yêu cầu username/password (private broker)
+
+🔄 CẤU TRÚC TOPIC MỚI:
+
+ESP32 đang publish theo format:
+SmartHome/
+  └─ {deviceId}/
+      ├─ info       → Thông tin thiết bị (ssid, ip, broker, firmware, id, timestamp)
+      ├─ state      → Trạng thái (mode, interval, fan, light, ac, timestamp)
+      ├─ data       → Dữ liệu sensor (temperature, humidity, light, timestamp)
+      └─ command    → Nhận lệnh từ Web (cmd_id, command, params)
+
+📝 DANH SÁCH THAY ĐỔI CHI TIẾT:
+
+═══════════════════════════════════════════════════════════
+1. FILE: script.js
+═══════════════════════════════════════════════════════════
+
+A. Hàm loadMQTTConfig() - DÒNG 36-48:
+   ├─ CŨ: host: "broker.emqx.io", port: 8083, useSSL: false
+   └─ MỚI: host: "6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud"
+          port: 8884
+          useSSL: true
+          username: "" (cần điền)
+          password: "" (cần điền)
+   
+   LÝ DO: Chuyển sang HiveMQ Cloud private broker với SSL bắt buộc
+
+B. Hàm subscribeDevice() - DÒNG 186-201:
+   ├─ CŨ: Subscribe 1 topic: DATALOGGER/{deviceId}/DATA
+   └─ MỚI: Subscribe 3 topics:
+          - SmartHome/{deviceId}/data     (sensor data)
+          - SmartHome/{deviceId}/state    (device state)
+          - SmartHome/{deviceId}/info     (device info)
+   
+   LÝ DO: Khớp với cấu trúc topic mà ESP32 đang publish
+
+C. Hàm handleMQTTMessage() - DÒNG 204-233:
+   ├─ CŨ: Chỉ xử lý 1 loại message từ DATALOGGER/{deviceId}/DATA
+   └─ MỚI: Xử lý 3 loại message dựa trên messageType:
+          - 'data'  → Gọi updateFirebaseFromMQTT(deviceId, payload, 'data')
+          - 'state' → Gọi updateFirebaseFromMQTT(deviceId, payload, 'state')
+          - 'info'  → Gọi updateFirebaseFromMQTT(deviceId, payload, 'info')
+   
+   LÝ DO: Parse topic SmartHome/{deviceId}/{type} và phân loại message
+
+D. Hàm updateFirebaseFromMQTT() - DÒNG 236-287:
+   ├─ CŨ: Nhận 2 tham số (deviceId, payload)
+   │      Xử lý unified: temp, humid, lux, wifi_ssid
+   │
+   └─ MỚI: Nhận 3 tham số (deviceId, payload, messageType)
+          
+          Xử lý theo messageType:
+          
+          ┌─ messageType === 'data':
+          │  ├─ payload.temperature → updates.temp
+          │  ├─ payload.humidity → updates.humid
+          │  ├─ payload.light → updates.lux
+          │  └─ Lưu vào history/{deviceId}
+          │
+          ├─ messageType === 'state':
+          │  ├─ payload.mode → updates.active (mode === 1)
+          │  ├─ payload.interval → updates.interval
+          │  ├─ payload.fan → updates.fan_active (fan === 1)
+          │  ├─ payload.light → updates.lamp_active (light === 1)
+          │  └─ payload.ac → updates.ac_active (ac === 1)
+          │
+          └─ messageType === 'info':
+             ├─ payload.ssid → updates.wifi_ssid
+             ├─ payload.ip → updates.ip_address
+             ├─ payload.broker → updates.mqtt_broker
+             └─ payload.firmware → updates.firmware
+   
+   LÝ DO: 
+   - Field names khác nhau giữa ESP32 và Firebase
+   - ESP32 dùng: temperature, humidity, light, mode, fan, ac
+   - Firebase lưu: temp, humid, lux, active, fan_active, ac_active
+
+E. Hàm sendCommand() - DÒNG 290-340:
+   ├─ CŨ: 
+   │  Topic: DATALOGGER/{deviceId}/CMD
+   │  Payload: { cmd: "START", val: "" }
+   │
+   └─ MỚI:
+      Topic: SmartHome/{deviceId}/command
+      Payload: {
+        cmd_id: "web_1234567890",
+        command: "set_mode",
+        params: { mode: 1 }
+      }
+      
+      Mapping lệnh:
+      ┌─ START → { command: "set_mode", params: { mode: 1 } }
+      ├─ STOP → { command: "set_mode", params: { mode: 0 } }
+      ├─ FAN → { command: "set_fan", params: { fan: 0/1 } }
+      ├─ LAMP → { command: "set_light", params: { light: 0/1 } }
+      ├─ AC → { command: "set_ac", params: { ac: 0/1 } }
+      └─ INTERVAL → { command: "set_interval", params: { interval: 5 } }
+   
+   LÝ DO: Khớp với format mà ESP32 đang expect trong command topic
+
+═══════════════════════════════════════════════════════════
+2. FILE: index.html
+═══════════════════════════════════════════════════════════
+
+A. Form Settings - Placeholder Text - DÒNG 197-205:
+   ├─ CŨ:
+   │  <input placeholder="broker.emqx.io">
+   │  <input placeholder="8083">
+   │  <small>Ví dụ: broker.emqx.io, mqtt.eclipse.org</small>
+   │  <small>Port WebSocket (thường là 8083 hoặc 8084)</small>
+   │
+   └─ MỚI:
+      <input placeholder="6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud">
+      <input placeholder="8884">
+      <small>Ví dụ: *.hivemq.cloud, broker.emqx.io</small>
+      <small>Port WebSocket SSL (8884) hoặc không SSL (8083)</small>
+   
+   LÝ DO: Hướng dẫn user cấu hình đúng với broker mới
+
+B. Info Box Topic - DÒNG 252-264:
+   ├─ CŨ:
+   │  Gửi lệnh: DATALOGGER/{deviceId}/CMD
+   │  Nhận dữ liệu: DATALOGGER/{deviceId}/DATA
+   │
+   └─ MỚI:
+      Gửi lệnh: SmartHome/{deviceId}/command
+      Nhận dữ liệu: SmartHome/{deviceId}/data
+      Nhận trạng thái: SmartHome/{deviceId}/state
+      Nhận thông tin: SmartHome/{deviceId}/info
+   
+   LÝ DO: Hiển thị đúng topic structure mới cho người dùng
+
+═══════════════════════════════════════════════════════════
+3. PAYLOAD STRUCTURE MAPPING
+═══════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────┐
+│ A. ESP32 → Web (Publish)                                │
+└─────────────────────────────────────────────────────────┘
+
+1️⃣ Topic: SmartHome/esp_01/data
+   ESP32 gửi:
+   {
+     "timestamp": 946692087,
+     "temperature": 31.115,
+     "humidity": 60.254,
+     "light": 178
+   }
+   
+   Web nhận → Lưu Firebase:
+   {
+     temp: 31.115,
+     humid: 60.254,
+     lux: 178,
+     last_update: 946692087
+   }
+
+2️⃣ Topic: SmartHome/esp_01/state
+   ESP32 gửi:
+   {
+     "timestamp": 946692046,
+     "mode": 0,
+     "interval": 5,
+     "fan": 0,
+     "light": 0,
+     "ac": 0
+   }
+   
+   Web nhận → Lưu Firebase:
+   {
+     active: false,           (mode === 1)
+     interval: 5,
+     fan_active: false,       (fan === 1)
+     lamp_active: false,      (light === 1)
+     ac_active: false,        (ac === 1)
+     last_update: 946692046
+   }
+
+3️⃣ Topic: SmartHome/esp_01/info
+   ESP32 gửi:
+   {
+     "timestamp": 946691508,
+     "id": "esp_01",
+     "ssid": "P. 613",
+     "ip": "192.168.1.22",
+     "broker": "mqtts://...hivemq.cloud:8883",
+     "firmware": "1.0.0"
+   }
+   
+   Web nhận → Lưu Firebase:
+   {
+     wifi_ssid: "P. 613",
+     ip_address: "192.168.1.22",
+     mqtt_broker: "mqtts://...hivemq.cloud:8883",
+     firmware: "1.0.0",
+     last_update: 946691508
+   }
+
+┌─────────────────────────────────────────────────────────┐
+│ B. Web → ESP32 (Publish Command)                        │
+└─────────────────────────────────────────────────────────┘
+
+Topic: SmartHome/esp_01/command
+
+🔹 Bật thiết bị:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000000",
+     "command": "set_mode",
+     "params": { "mode": 1 }
+   }
+
+🔹 Tắt thiết bị:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000001",
+     "command": "set_mode",
+     "params": { "mode": 0 }
+   }
+
+🔹 Bật quạt:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000002",
+     "command": "set_fan",
+     "params": { "fan": 1 }
+   }
+
+🔹 Bật đèn:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000003",
+     "command": "set_light",
+     "params": { "light": 1 }
+   }
+
+🔹 Bật máy lạnh:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000004",
+     "command": "set_ac",
+     "params": { "ac": 1 }
+   }
+
+🔹 Đổi interval:
+   Web gửi:
+   {
+     "cmd_id": "web_1735000005",
+     "command": "set_interval",
+     "params": { "interval": 10 }
+   }
+
+═══════════════════════════════════════════════════════════
+4. CHECKLIST CẬP NHẬT
+═══════════════════════════════════════════════════════════
+
+✅ script.js - loadMQTTConfig(): Broker mặc định → HiveMQ Cloud
+✅ script.js - subscribeDevice(): Topics → SmartHome/{id}/data|state|info
+✅ script.js - handleMQTTMessage(): Parse messageType từ topic
+✅ script.js - updateFirebaseFromMQTT(): Xử lý 3 loại message + field mapping
+✅ script.js - sendCommand(): Topic → SmartHome/{id}/command + new payload format
+✅ index.html - Settings form: Placeholder → HiveMQ Cloud broker
+✅ index.html - Info box: Topics → SmartHome structure
+
+⚠️ CẦN LÀM TIẾP:
+❗ Điền username/password HiveMQ Cloud vào Settings hoặc localStorage
+❗ Kiểm tra ESP32 đang publish đúng topics: SmartHome/{deviceId}/*
+❗ Test kết nối với broker HiveMQ Cloud từ Web Dashboard
+❗ Verify payload format khớp giữa ESP32 và Web
+
+═══════════════════════════════════════════════════════════
+5. HƯỚNG DẪN SỬ DỤNG
+═══════════════════════════════════════════════════════════
+
+🔧 Bước 1: Cấu hình MQTT Broker (Settings tab)
+   - Host: 6ceea111b6144c71a57b21faa3553fc6.s1.eu.hivemq.cloud
+   - Port: 8884
+   - SSL/TLS: Có (wss://)
+   - Username: [Điền username HiveMQ Cloud]
+   - Password: [Điền password HiveMQ Cloud]
+   - Nhấn "Lưu Cấu Hình & Khởi Động Lại"
+
+🔧 Bước 2: Kiểm tra kết nối
+   - Xem badge header: "MQTT: Connected"
+   - Nếu failed → Check username/password
+   - Nếu timeout → Check firewall/network
+
+🔧 Bước 3: Kiểm tra ESP32
+   - ESP32 phải publish vào topics: SmartHome/{deviceId}/*
+   - Kiểm tra Serial Monitor: "Published to SmartHome/esp_01/data"
+   - Verify broker ESP32 = broker Web (cùng HiveMQ Cloud)
+
+🔧 Bước 4: Test điều khiển
+   - Click nút START/STOP → Check console: "MQTT Sent [SmartHome/esp_01/command]"
+   - ESP32 nhận được lệnh → Thực hiện → Publish state mới
+   - Web nhận state → Cập nhật Firebase → UI sync
+
+═══════════════════════════════════════════════════════════
+6. SO SÁNH TRƯỚC/SAU
+═══════════════════════════════════════════════════════════
+
+┌─────────────────┬──────────────────────┬──────────────────────┐
+│ Mục             │ Trước (EMQX)         │ Sau (HiveMQ Cloud)   │
+├─────────────────┼──────────────────────┼──────────────────────┤
+│ Broker          │ broker.emqx.io       │ *.s1.eu.hivemq.cloud │
+│ Port WebSocket  │ 8083                 │ 8884                 │
+│ SSL/TLS         │ Không (ws://)        │ Có (wss://)          │
+│ Authentication  │ Public (no auth)     │ Private (user/pass)  │
+│ Topic prefix    │ DATALOGGER/          │ SmartHome/           │
+│ Topic count     │ 2 (CMD, DATA)        │ 4 (command, data,    │
+│                 │                      │    state, info)      │
+│ Payload format  │ {cmd, val}           │ {cmd_id, command,    │
+│ (command)       │                      │  params}             │
+│ Field names     │ Trực tiếp            │ Mapping (temp→       │
+│                 │                      │ temperature, etc)    │
+└─────────────────┴──────────────────────┴──────────────────────┘
+
+═══════════════════════════════════════════════════════════
 
 ========================================
 PHÂN TÍCH VAI TRÒ MQTT TRONG HỆ THỐNG (2025-12-16)
