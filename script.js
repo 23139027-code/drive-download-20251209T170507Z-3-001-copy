@@ -39,8 +39,8 @@ function loadMQTTConfig() {
         port: 8884,
         path: "/mqtt",
         useSSL: true,
-        username: "SmartHome",
-        password: "SmartHome01",
+        username: "",
+        password: "",
         keepalive: 60,
         clientId: "WebDashboard_" + Math.random().toString(16).substr(2, 8)
     };
