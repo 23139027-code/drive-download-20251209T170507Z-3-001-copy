@@ -230,13 +230,13 @@
                     </table>
                 </div>
 
-                <!-- 2 nút: Reboot và WiFi -->
-                <div style="display: flex; gap: 15px; justify-content: center;">
+                <!-- 3 nút: Reboot, Sửa Thời Gian, WiFi -->
+                <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 15px;">
                     <button type="button" onclick="rebootAllDevices()" 
                         style="flex: 1; max-width: 250px; padding: 15px 25px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px;">
                         <i class="fa-solid fa-power-off"></i> Reboot Tất Cả
                     </button>
-                    <button type="button" onclick="syncTimeToAllDevices()" 
+                    <button type="button" onclick="showManualTimeModal()" 
                         style="flex: 1; max-width: 250px; padding: 15px 25px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px;">
                         <i class="fa-solid fa-clock"></i> Sửa Thời Gian
                     </button>
@@ -249,6 +249,56 @@
                 <!-- Container hiển thị hướng dẫn WiFi -->
                 <div id="wifi-guide-content" style="display: none; margin-top: 20px; padding: 20px; background: #fef3c7; border-radius: 8px; border: 2px solid #f59e0b;">
                     <!-- Nội dung hướng dẫn sẽ được thêm bằng JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal chỉnh thời gian thủ công (đặt ngoài tất cả các view) -->
+        <div id="manual-time-modal" 
+            style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999; overflow: auto;">
+            <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+                <div style="background: white; padding: 30px; border-radius: 15px; max-width: 500px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); position: relative;">
+                    <h3 style="margin: 0 0 20px 0; color: #1f2937; display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-calendar-days"></i> Chỉnh Thời Gian Thủ Công
+                    </h3>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; color: #374151; font-weight: 600;">
+                            <i class="fa-solid fa-calendar"></i> Chọn Ngày:
+                        </label>
+                        <input type="date" id="manual-date-input" 
+                            style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <label style="display: block; margin-bottom: 8px; color: #374151; font-weight: 600;">
+                            <i class="fa-solid fa-clock"></i> Chọn Giờ:
+                        </label>
+                        <input type="time" id="manual-time-input" 
+                            style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+
+                    <div style="padding: 12px; background: #f3f4f6; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="font-size: 0.9rem; color: #6b7280; margin-bottom: 5px;">Thời gian đã chọn:</div>
+                        <div id="manual-time-preview" style="font-size: 1.1rem; font-weight: 600; color: #1f2937;">
+                            Chưa chọn
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" onclick="applyManualTime()" 
+                            style="flex: 1; padding: 12px 20px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            <i class="fa-solid fa-check"></i> Áp Dụng
+                        </button>
+                        <button type="button" onclick="syncTimeToAllDevices()" 
+                            style="flex: 1; padding: 12px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            <i class="fa-solid fa-globe"></i> Sync Internet
+                        </button>
+                        <button type="button" onclick="closeManualTimeModal()" 
+                            style="flex: 1; padding: 12px 20px; background: #6b7280; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            <i class="fa-solid fa-xmark"></i> Đóng
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -1576,6 +1576,133 @@ window.syncTimeToAllDevices = async function() {
     }
 };
 
+// Hiển thị modal chỉnh thời gian thủ công
+window.showManualTimeModal = function() {
+    const modal = document.getElementById('manual-time-modal');
+    const dateInput = document.getElementById('manual-date-input');
+    const timeInput = document.getElementById('manual-time-input');
+    
+    if (!modal) return;
+    
+    // Set giá trị mặc định là thời gian hiện tại
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    
+    dateInput.value = dateStr;
+    timeInput.value = timeStr;
+    
+    // Cập nhật preview
+    updateManualTimePreview();
+    
+    // Thêm event listener để cập nhật preview khi thay đổi (chỉ thêm 1 lần)
+    dateInput.removeEventListener('change', updateManualTimePreview);
+    timeInput.removeEventListener('change', updateManualTimePreview);
+    dateInput.addEventListener('change', updateManualTimePreview);
+    timeInput.addEventListener('change', updateManualTimePreview);
+    
+    // Hiển thị modal
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Ngăn scroll khi modal mở
+};
+
+// Đóng modal
+window.closeManualTimeModal = function() {
+    const modal = document.getElementById('manual-time-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = ''; // Khôi phục scroll
+    }
+};
+
+// Cập nhật preview thời gian
+function updateManualTimePreview() {
+    const dateInput = document.getElementById('manual-date-input');
+    const timeInput = document.getElementById('manual-time-input');
+    const preview = document.getElementById('manual-time-preview');
+    
+    if (!dateInput || !timeInput || !preview) return;
+    
+    if (dateInput.value && timeInput.value) {
+        const selectedDate = new Date(dateInput.value + 'T' + timeInput.value);
+        const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+        const dayName = days[selectedDate.getDay()];
+        
+        preview.textContent = `${dayName}, ${selectedDate.toLocaleString('vi-VN')}`;
+    } else {
+        preview.textContent = 'Chưa chọn';
+    }
+}
+
+// Áp dụng thời gian thủ công
+window.applyManualTime = async function() {
+    const dateInput = document.getElementById('manual-date-input');
+    const timeInput = document.getElementById('manual-time-input');
+    
+    if (!dateInput.value || !timeInput.value) {
+        alert("⚠️ Vui lòng chọn đầy đủ ngày và giờ!");
+        return;
+    }
+    
+    if (!isMQTTConnected()) {
+        alert("❌ Chưa kết nối MQTT! Không thể gửi lệnh.");
+        return;
+    }
+    
+    try {
+        // Tạo Date object từ input
+        const selectedDateTime = new Date(dateInput.value + 'T' + timeInput.value);
+        const manualTimestamp = Math.floor(selectedDateTime.getTime() / 1000);
+        
+        const snapshot = await get(ref(db, 'devices'));
+        
+        if (!snapshot.exists()) {
+            alert("Không tìm thấy thiết bị nào!");
+            return;
+        }
+        
+        const devices = snapshot.val();
+        let count = 0;
+        let deviceList = [];
+        
+        console.log(`📡 Sending manual timestamp ${manualTimestamp} to ${Object.keys(devices).length} devices...`);
+        
+        // Gửi lệnh set_timestamp cho tất cả thiết bị
+        for (const deviceId of Object.keys(devices)) {
+            const topic = `SmartHome/${deviceId}/command`;
+            commandCounter++;
+            
+            const timePayload = {
+                id: "cmd_" + commandCounter.toString().padStart(3, '0'),
+                command: "set_timestamp",
+                params: {
+                    timestamp: manualTimestamp
+                }
+            };
+            
+            const payload = JSON.stringify(timePayload);
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = topic;
+            
+            try {
+                mqttClient.send(message);
+                console.log(`✅ Sent manual timestamp to [${topic}]:`, payload);
+                deviceList.push(deviceId);
+                count++;
+            } catch (e) {
+                console.error(`❌ Failed to send timestamp to ${deviceId}:`, e);
+            }
+        }
+        
+        closeManualTimeModal();
+        alert(`✅ Đã gửi thời gian thủ công đến ${count} thiết bị!\n\nThiết bị: ${deviceList.join(', ')}\n\nThời gian: ${selectedDateTime.toLocaleString('vi-VN')}\nTimestamp: ${manualTimestamp}`);
+        
+    } catch (error) {
+        console.error('Error applying manual time:', error);
+        alert("❌ Lỗi khi gửi thời gian thủ công: " + error.message);
+    }
+};
+
 // 3. Hàm xóa cấu hình MQTT (Reset)
 window.clearMQTTSettings = function () {
     if (confirm("Bạn có chắc muốn xóa cấu hình MQTT?")) {
